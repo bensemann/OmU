@@ -16,6 +16,8 @@ CITIES = [
     {"name": "Wiesbaden",         "slug": "Wiesbaden",         "optional": False},
     {"name": "Mainz",             "slug": "Mainz",             "optional": False},
     {"name": "Geisenheim",        "slug": "Geisenheim",        "optional": False},
+    {"name": "Frankfurt am Main", "slug": "Frankfurt am Main", "optional": True},
+    {"name": "Darmstadt",         "slug": "Darmstadt",         "optional": True},
     {"name": "Sulzbach (Taunus)", "slug": "Sulzbach (Taunus)", "optional": True},
 ]
 
@@ -34,8 +36,9 @@ MAX_SHOWTIMES = 30
 MAX_URL_LEN   = 300
 MAX_JSON_MB   = 8
 
-TIME_RE    = re.compile(r'^\d{1,2}:\d{2}$')
-VERSION_RE = re.compile(r'\s*\(OmU\)\s*', re.IGNORECASE)
+TIME_RE       = re.compile(r'^\d{1,2}:\d{2}$')
+MULTI_TIME_RE = re.compile(r'\d{1,2}:\d{2}')   # extract from concatenated strings
+VERSION_RE    = re.compile(r'\s*\(OmU\)\s*', re.IGNORECASE)
 omdb_cache: dict = {}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -85,6 +88,9 @@ def get_omdb(title: str, year: str | None = None) -> dict:
             "imdb_rating": d.get("imdbRating", ""),
             "imdb_id":     d.get("imdbID", ""),
             "poster_omdb": d.get("Poster", ""),
+            "plot":        d.get("Plot", ""),
+            "director":    d.get("Director", ""),
+            "actors":      d.get("Actors", ""),
         } if d.get("Response") == "True" else {}
     except Exception:
         result = {}
@@ -195,8 +201,9 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
     # Bare text nodes matching HH:MM are today's unlinked showtimes.
     #
     cinemas: list[dict] = []
-    current:  dict | None = None
-    today     = datetime.now().strftime("%Y-%m-%d")
+    current:      dict | None = None
+    need_address: bool        = False
+    today = datetime.now().strftime("%Y-%m-%d")
 
     for elem in h2.next_elements:
         if elem is next_h2:
@@ -214,8 +221,10 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
                     current = {"name": text[:100], "address": "",
                                "city": city_name, "showtimes": []}
                     cinemas.append(current)
+                    need_address = True
 
             elif TIME_RE.match(text) and current is not None:
+                need_address = False
                 if len(current["showtimes"]) < MAX_SHOWTIMES:
                     # Try td column position first
                     date = date_from_td(elem, dates)
@@ -232,19 +241,31 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
                     })
 
         elif isinstance(elem, str):
-            t = elem.strip()
-            if TIME_RE.match(t) and current is not None:
-                # Skip: text nodes that are direct children of <a> tags
-                # were already counted above as linked showtimes.
-                par = getattr(elem, "parent", None)
-                if par and getattr(par, "name", None) == "a":
-                    continue
-                if len(current["showtimes"]) < MAX_SHOWTIMES:
-                    current["showtimes"].append({
-                        "time": t,
-                        "date": today,
-                        "url":  "",
-                    })
+            raw = elem.strip()
+            if not raw or current is None:
+                continue
+            # Skip text nodes inside <a> tags (already counted as linked times)
+            par = getattr(elem, "parent", None)
+            if par and getattr(par, "name", None) == "a":
+                continue
+            # Check if string is mostly times (e.g. "14:0017:0020:00")
+            found    = MULTI_TIME_RE.findall(raw)
+            leftover = MULTI_TIME_RE.sub("", raw).strip()
+            is_times = bool(found) and len(leftover) <= 3
+            # Capture address: first non-time text right after cinema link
+            if need_address and not is_times:
+                current["address"] = raw[:120]
+                need_address = False
+                continue
+            need_address = False
+            if is_times:
+                for t in found:
+                    if len(current["showtimes"]) < MAX_SHOWTIMES:
+                        current["showtimes"].append({
+                            "time": t,
+                            "date": today,
+                            "url":  "",
+                        })
 
     # Drop cinemas with zero showtimes
     cinemas = [c for c in cinemas if c["showtimes"]]
@@ -264,6 +285,9 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         "poster":      poster or omdb.get("poster_omdb", ""),
         "imdb_rating": omdb.get("imdb_rating", ""),
         "imdb_id":     omdb.get("imdb_id", ""),
+        "plot":        omdb.get("plot", ""),
+        "director":    omdb.get("director", ""),
+        "actors":      omdb.get("actors", ""),
         "cinemas":     cinemas,
     }
 
