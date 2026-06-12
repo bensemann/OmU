@@ -179,24 +179,21 @@
 
   /* Poster */
   .poster-col {
-    flex: 0 0 95px;
-    width: 95px;
+    flex: 0 0 90px;
+    width: 90px;
     background: var(--blue-lt);
-    position: relative;
-    overflow: hidden;
+    align-self: stretch;
   }
   .poster-col img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
     display: block;
+    width: 90px;
+    height: 135px;
+    object-fit: cover;
+    object-position: center top;
   }
   .poster-placeholder {
-    width: 100%;
-    height: 100%;
-    min-height: 140px;
+    width: 90px;
+    height: 135px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -373,11 +370,6 @@
 </header>
 
 <div class="filter-wrap">
-  <!-- Version filter -->
-  <div class="filter-section">
-    <span class="filter-label">Version</span>
-    <div id="version-chips"></div>
-  </div>
   <!-- City filter -->
   <div class="filter-section">
     <span class="filter-label">Stadt</span>
@@ -414,7 +406,7 @@
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   data:            null,
-  activeVersions:  new Set(['OmU']),
+
   activeCities:    new Set(),
   searchQuery:     '',
   dateFrom:        null,
@@ -423,10 +415,6 @@ const state = {
   allCities:       [],
 };
 
-const VERSIONS = [
-  { key: 'OmU', label: 'OmU', cls: 'omu' },
-  { key: 'OV',  label: 'OV',  cls: 'ov'  },
-];
 const QUICK = [
   { key: 'today',    label: 'Heute' },
   { key: 'week',     label: 'Diese Woche' },
@@ -544,21 +532,6 @@ async function loadData() {
 }
 
 // ── Build chips ────────────────────────────────────────────────────────────
-function renderVersionChips() {
-  const el = $('version-chips');
-  el.style.display = 'flex'; el.style.gap = '.4rem'; el.style.flexWrap = 'wrap';
-  el.innerHTML = '';
-  for (const v of VERSIONS) {
-    const btn = document.createElement('button');
-    btn.className = `chip ${v.cls}` + (state.activeVersions.has(v.key) ? ' active' : '');
-    btn.textContent = v.label;
-    btn.onclick = () => {
-      state.activeVersions.has(v.key) ? state.activeVersions.delete(v.key) : state.activeVersions.add(v.key);
-      renderAll();
-    };
-    el.appendChild(btn);
-  }
-}
 
 function renderCityChips() {
   const el = $('city-chips');
@@ -660,7 +633,6 @@ function buildMovieCard(movie) {
 
 // ── Main render ────────────────────────────────────────────────────────────
 function renderAll() {
-  renderVersionChips();
   renderCityChips();
   renderQuickBtns();
 
@@ -673,9 +645,6 @@ function renderAll() {
     if (!cityData) continue;
 
     for (const movie of (cityData.movies || [])) {
-      // Version filter
-      if (!state.activeVersions.has(movie.version)) continue;
-
       // Search filter
       if (state.searchQuery.length >= 2) {
         const q = state.searchQuery.toLowerCase();
