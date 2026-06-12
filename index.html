@@ -288,6 +288,15 @@
     white-space: nowrap;
   }
   .imdb-inline:hover { text-decoration: underline; }
+  .trailer-inline {
+    color: #dc2626;
+    font-size: .78rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    opacity: .85;
+  }
+  .trailer-inline:hover { opacity: 1; text-decoration: underline; }
   .version-badge {
     border-radius: 6px;
     font-size: .68rem;
@@ -681,7 +690,9 @@ function buildMovieCard(movie) {
     ? ` <a class="imdb-inline" href="${imdbUrl}" target="_blank">(IMDb: ${escHtml(movie.imdb_rating)})</a>`
     : '';
 
-  const titleHtml = `${escHtml(movie.title)}${imdbLink}`;
+  const trailerUrl  = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + ' Trailer')}`;
+  const trailerLink = ` <a class="trailer-inline" href="${trailerUrl}" target="_blank">▶ Trailer</a>`;
+  const titleHtml = `${escHtml(movie.title)}${imdbLink}${trailerLink}`;
 
   const merged = mergeCinemas(movie.cinemas || []);
   let cinemaHtml = '';

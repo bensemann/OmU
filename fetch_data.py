@@ -3,6 +3,7 @@
 OmU Kino Scraper – rewrites from scratch after DOM analysis.
 Scrapes allekinos.de city pages, scopes each film to h2→next-h2 boundaries,
 extracts only OmU showings. Enriches with OMDb for IMDb ratings.
+Also scrapes kinopolis.de wochenübersicht pages for next-week data.
 """
 
 import requests
@@ -41,6 +42,20 @@ TIME_RE       = re.compile(r'^\d{1,2}:\d{2}$')
 MULTI_TIME_RE = re.compile(r'\d{1,2}:\d{2}')   # extract from concatenated strings
 VERSION_RE    = re.compile(r'\s*\(OmU\)\s*', re.IGNORECASE)
 omdb_cache: dict = {}
+
+# ── Kinopolis config ───────────────────────────────────────────────────────────
+
+KP_BASE = "https://www.kinopolis.de"
+KP_DATE_RE = re.compile(r'(\d{1,2})\.(\d{2})\.')
+
+# Venues to scrape from kinopolis.de for supplemental next-week data.
+# week=2 = Wochenübersicht for next week (Mon–Sun).
+KINOPOLIS_VENUES = [
+    {"code": "su", "cinema": "Kinopolis MTZ",        "city": "Sulzbach (Taunus)", "optional": True},
+    {"code": "kp", "cinema": "Kinopolis Darmstadt",  "city": "Darmstadt",         "optional": True},
+    {"code": "cd", "cinema": "Citydome Darmstadt",   "city": "Darmstadt",         "optional": True},
+    {"code": "rx", "cinema": "programmkino rex",     "city": "Darmstadt",         "optional": True},
+]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -292,6 +307,156 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         "cinemas":     cinemas,
     }
 
+# ── Kinopolis scraper ─────────────────────────────────────────────────────────
+
+def parse_kinopolis_date(text: str) -> str | None:
+    """Parse 'Sa.  20.06.' → '2026-06-20', handling Dec/Jan rollover."""
+    m = KP_DATE_RE.search(text)
+    if not m:
+        return None
+    day, month = int(m.group(1)), int(m.group(2))
+    now = datetime.now()
+    year = now.year
+    try:
+        d = datetime(year, month, day)
+        # If date is more than 30 days in the past it must be next year
+        if (now - d).days > 30:
+            d = datetime(year + 1, month, day)
+        return d.strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+def fetch_kinopolis(code: str, week: int) -> str:
+    url = f"{KP_BASE}/{code}/programm/woche-{week}"
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    r.raise_for_status()
+    return r.text
+
+def parse_kinopolis_page(html: str, cinema_name: str, city_name: str) -> list[dict]:
+    """Extract OmU movies from a kinopolis.de Wochenübersicht page."""
+    soup = BeautifulSoup(html, "html.parser")
+    movies: list[dict] = []
+
+    for section in soup.select("section.movie"):
+        h2 = section.find("h2")
+        if not h2:
+            continue
+        title_link = h2.find("a")
+        raw_title = (title_link or h2).get_text(strip=True)
+        # Strip alternate original title: "German Title / ORIGINAL TITLE"
+        title = re.split(r'\s*/\s*', raw_title)[0].strip()
+
+        # Poster from kinopolis CDN
+        poster = ""
+        img = section.find("img", src=re.compile(r"plakate_"))
+        if img:
+            poster = img.get("src", "")[:MAX_URL_LEN]
+
+        # Dates (.prog-nav__link) align 1:1 with day wrappers (.prog-day__wrapper)
+        nav_links   = section.select(".prog-nav__link")
+        day_wrappers = section.select(".prog-day__wrapper")
+
+        showtimes_list: list[dict] = []
+
+        for nav_link, wrapper in zip(nav_links, day_wrappers):
+            date_str = parse_kinopolis_date(nav_link.get_text())
+            if not date_str:
+                continue
+
+            # Each .prog2__cont is one showing; check for OmU badge
+            for cont in wrapper.select(".prog2__cont"):
+                if not cont.select(".tech__omu"):
+                    continue
+                # Booking link contains the time text
+                time_link = cont.find("a", href=re.compile(r"/vorstellung/"))
+                if not time_link:
+                    continue
+                time_text = time_link.get_text(strip=True)
+                if not TIME_RE.match(time_text):
+                    continue
+                href = time_link.get("href", "")
+                if href and not href.startswith("http"):
+                    href = KP_BASE + href
+                showtimes_list.append({
+                    "time": time_text,
+                    "date": date_str,
+                    "url":  clean_url(href),
+                })
+
+        if not showtimes_list:
+            continue
+
+        # Metadata from section text
+        meta_text = section.get_text(" ", strip=True)
+        year_m    = re.search(r'Produktionsjahr:\s*(20\d{2})', meta_text)
+        year      = year_m.group(1) if year_m else None
+        runtime_m = re.search(r'Dauer:\s*(\d+)\s*Minuten', meta_text)
+        runtime   = int(runtime_m.group(1)) if runtime_m else None
+        fsk_m     = re.search(r'FSK:\s*(?:ab\s*)?(\d+)', meta_text)
+        fsk       = fsk_m.group(1) if fsk_m else None
+
+        omdb = get_omdb(title, year)
+
+        movies.append({
+            "title":       title,
+            "version":     "OmU",
+            "genres":      [],
+            "year":        year,
+            "runtime":     runtime,
+            "fsk":         fsk,
+            "poster":      poster or omdb.get("poster_omdb", ""),
+            "imdb_rating": omdb.get("imdb_rating", ""),
+            "imdb_id":     omdb.get("imdb_id", ""),
+            "plot":        omdb.get("plot", ""),
+            "director":    omdb.get("director", ""),
+            "actors":      omdb.get("actors", ""),
+            "cinemas": [{
+                "name":      cinema_name,
+                "address":   "",
+                "city":      city_name,
+                "showtimes": showtimes_list,
+            }],
+        })
+
+    return movies
+
+def merge_kinopolis(output: dict, kp_movies: list[dict], city_name: str, optional: bool) -> None:
+    """
+    Merge kinopolis movies into the output dict for the given city.
+    Films with the same title are merged: showtimes are added to the existing
+    cinema entry (deduped by date+time), or a new cinema entry is appended.
+    New films are appended as-is.
+    """
+    if city_name not in output["cities"]:
+        output["cities"][city_name] = {"optional": optional, "movies": []}
+
+    city_movies = output["cities"][city_name]["movies"]
+
+    for kp_movie in kp_movies:
+        # Look for existing film with same title (case-insensitive)
+        existing = next(
+            (m for m in city_movies if m["title"].lower() == kp_movie["title"].lower()),
+            None,
+        )
+        if existing is None:
+            city_movies.append(kp_movie)
+            continue
+
+        # Film exists → merge cinemas/showtimes
+        for kp_cinema in kp_movie["cinemas"]:
+            ex_cinema = next(
+                (c for c in existing["cinemas"] if c["name"] == kp_cinema["name"]),
+                None,
+            )
+            if ex_cinema is None:
+                existing["cinemas"].append(kp_cinema)
+            else:
+                existing_keys = {(s["date"], s["time"]) for s in ex_cinema["showtimes"]}
+                for st in kp_cinema["showtimes"]:
+                    if (st["date"], st["time"]) not in existing_keys:
+                        ex_cinema["showtimes"].append(st)
+                        existing_keys.add((st["date"], st["time"]))
+
 # ── City scraper ──────────────────────────────────────────────────────────────
 
 def fetch_city(slug: str) -> str:
@@ -335,6 +500,22 @@ def main():
         except Exception as exc:
             print(f"  ✗ Fehler: {exc}")
             output["cities"][name] = {"optional": cfg["optional"], "movies": [], "error": str(exc)}
+
+    # ── Kinopolis supplemental scraping (woche-2 = next week) ────────────────────
+    print("\n=== Kinopolis – nächste Woche (woche-2) ===")
+    for venue in KINOPOLIS_VENUES:
+        code      = venue["code"]
+        cinema    = venue["cinema"]
+        city_name = venue["city"]
+        optional  = venue["optional"]
+        print(f"\n  {cinema} ({code}/woche-2)…")
+        try:
+            html      = fetch_kinopolis(code, 2)
+            kp_movies = parse_kinopolis_page(html, cinema, city_name)
+            print(f"    → {len(kp_movies)} OmU-Film(e)")
+            merge_kinopolis(output, kp_movies, city_name, optional)
+        except Exception as exc:
+            print(f"    ✗ Fehler: {exc}")
 
     # Safety check
     raw = json.dumps(output, ensure_ascii=False)
