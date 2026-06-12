@@ -19,6 +19,7 @@ CITIES = [
     {"name": "Frankfurt am Main", "slug": "Frankfurt am Main", "optional": True},
     {"name": "Darmstadt",         "slug": "Darmstadt",         "optional": True},
     {"name": "Sulzbach (Taunus)", "slug": "Sulzbach (Taunus)", "optional": True},
+    {"name": "Gießen",           "slug": "Gießen",           "optional": True},
 ]
 
 OMDB_KEY  = os.environ.get("OMDB_API_KEY", "")

@@ -59,7 +59,7 @@
     align-items: center;
     gap: .65rem;
   }
-  .header-icon { font-size: 2rem; line-height: 1; flex-shrink: 0; }
+  .header-icon { flex-shrink: 0; display: flex; align-items: center; }
   .header-text { display: flex; flex-direction: column; }
   .header-sub {
     font-size: .6rem;
@@ -264,13 +264,14 @@
     color: var(--text);
     flex: 1 1 140px;
   }
-  .movie-title-link {
-    color: var(--text);
+  .imdb-inline {
+    color: var(--star);
+    font-size: .82rem;
+    font-weight: 600;
     text-decoration: none;
-    font-weight: 700;
+    white-space: nowrap;
   }
-  .movie-title-link:hover { color: var(--blue); text-decoration: underline; }
-  .movie-title-link .rating { color: var(--star); font-weight: 600; }
+  .imdb-inline:hover { text-decoration: underline; }
   .version-badge {
     border-radius: 6px;
     font-size: .68rem;
@@ -291,22 +292,6 @@
     gap: .3rem .6rem;
     align-items: center;
   }
-  .imdb-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: .2rem;
-    background: #fef3c7;
-    border: 1px solid #fcd34d;
-    border-radius: 5px;
-    color: var(--star);
-    font-size: .73rem;
-    font-weight: 700;
-    padding: .05rem .35rem;
-    text-decoration: none;
-    transition: border-color .15s;
-  }
-  .imdb-badge:hover { border-color: var(--star); }
-
   .cinemas-section {
     border-top: 1px solid var(--border);
     padding-top: .55rem;
@@ -354,47 +339,6 @@
   .time-slot.no-link { color: var(--muted); background: var(--surface2); border-color: var(--border); border-style: dashed; }
   .time-slot.no-link:hover { background: var(--surface2); color: var(--muted); border-color: var(--border); }
 
-  /* ── Hessen section ── */
-  .hessen-box {
-    margin-top: 2rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    text-align: center;
-  }
-  .hessen-box h3 {
-    font-size: .9rem;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: .4rem;
-  }
-  .hessen-box p {
-    color: var(--muted);
-    font-size: .8rem;
-    margin-bottom: .75rem;
-  }
-  .hessen-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .4rem;
-    justify-content: center;
-    margin-bottom: .6rem;
-  }
-  .hessen-link {
-    display: inline-block;
-    background: var(--blue-lt);
-    border: 1.5px solid #bfdbfe;
-    border-radius: 8px;
-    color: var(--blue-dk);
-    font-size: .82rem;
-    font-weight: 600;
-    padding: .35rem .8rem;
-    text-decoration: none;
-    transition: all .15s;
-  }
-  .hessen-link:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
-
   /* ── No results ── */
   #no-results {
     text-align: center; color: var(--muted); margin-top: 3rem; font-size: .95rem;
@@ -428,7 +372,7 @@
 
   @media (max-width: 520px) {
     .header-title { font-size: 1rem; }
-    .header-icon { font-size: 1.7rem; }
+    .header-icon svg { width: 28px; height: 28px; }
     .poster-col { flex: 0 0 72px; width: 72px; }
     .movie-title { font-size: .92rem; }
     .filter-label, .search-label { flex: 0 0 100%; margin-bottom: -.1rem; }
@@ -441,7 +385,26 @@
   <div class="filmstrip"></div>
   <div class="header-inner">
     <div class="header-branding">
-      <div class="header-icon">🎞️</div>
+      <div class="header-icon">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Clapperboard body -->
+          <rect x="3" y="13" width="30" height="20" rx="3" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.6)" stroke-width="1.8"/>
+          <!-- Top slate -->
+          <rect x="3" y="4" width="30" height="11" rx="2.5" fill="rgba(255,255,255,0.22)" stroke="rgba(255,255,255,0.6)" stroke-width="1.8"/>
+          <!-- Diagonal stripes (black & white clapper bars) -->
+          <line x1="9"  y1="4"  x2="13" y2="15" stroke="rgba(255,255,255,0.6)" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="17" y1="4"  x2="21" y2="15" stroke="rgba(255,255,255,0.6)" stroke-width="2.2" stroke-linecap="round"/>
+          <line x1="25" y1="4"  x2="29" y2="15" stroke="rgba(255,255,255,0.6)" stroke-width="2.2" stroke-linecap="round"/>
+          <!-- Film holes left -->
+          <circle cx="7"  cy="19" r="2" fill="rgba(255,255,255,0.35)"/>
+          <circle cx="7"  cy="27" r="2" fill="rgba(255,255,255,0.35)"/>
+          <!-- Film holes right -->
+          <circle cx="29" cy="19" r="2" fill="rgba(255,255,255,0.35)"/>
+          <circle cx="29" cy="27" r="2" fill="rgba(255,255,255,0.35)"/>
+          <!-- Play triangle -->
+          <path d="M15 20 L15 26 L22 23 Z" fill="rgba(255,255,255,0.75)"/>
+        </svg>
+      </div>
       <div class="header-text">
         <div class="header-title">
           bene's kleine <span class="hl-blue">Omi</span> <span class="hl-ehh">ehhh</span> <span class="hl-blue">OmU</span>-Suche
@@ -509,7 +472,11 @@ const QUICK = [
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-function toISO(d) { return d.toISOString().slice(0, 10); }
+function toISO(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
 function todayISO() { return toISO(new Date()); }
 
 function weekRange(offsetWeeks = 0) {
@@ -601,6 +568,17 @@ function mergeCinemas(cinemas) {
   return [...map.values()];
 }
 
+// ── Deduplicate showtimes within a cinema (same date+time) ────────────────
+function dedupeShowtimes(showtimes) {
+  const seen = new Set();
+  return showtimes.filter(st => {
+    const k = (st.date || '') + '|' + st.time;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 // ── Group showtimes by date ────────────────────────────────────────────────
 function groupByDate(showtimes) {
   const groups = new Map();
@@ -625,16 +603,35 @@ async function loadData() {
 }
 
 // ── Render chips ───────────────────────────────────────────────────────────
+function allCitiesActive() {
+  return state.allCities.every(c => state.activeCities.has(c.name));
+}
+
 function renderCityChips() {
   const el = $('city-chips');
   el.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap';
   el.innerHTML = '';
+
+  // "Alle" chip
+  const alleBtn = document.createElement('button');
+  alleBtn.className = 'chip' + (allCitiesActive() ? ' active' : '');
+  alleBtn.textContent = 'Alle';
+  alleBtn.onclick = () => {
+    state.activeCities = new Set(state.allCities.map(c => c.name));
+    renderAll();
+  };
+  el.appendChild(alleBtn);
+
   for (const c of state.allCities) {
     const btn = document.createElement('button');
     btn.className = 'chip' + (state.activeCities.has(c.name) ? ' active' : '');
     btn.textContent = cityLabel(c.name);
     btn.onclick = () => {
-      state.activeCities.has(c.name) ? state.activeCities.delete(c.name) : state.activeCities.add(c.name);
+      if (state.activeCities.has(c.name)) {
+        state.activeCities.delete(c.name);
+      } else {
+        state.activeCities.add(c.name);
+      }
       renderAll();
     };
     el.appendChild(btn);
@@ -661,21 +658,20 @@ function buildMovieCard(movie) {
   if (movie.fsk)     metaParts.push(`FSK ${movie.fsk}`);
   if (movie.genres?.length) metaParts.push(movie.genres.slice(0,3).join(', '));
 
-  const hasImdb   = movie.imdb_rating && movie.imdb_rating !== 'N/A' && movie.imdb_id;
-  const imdbUrl   = hasImdb ? `https://www.imdb.com/title/${escHtml(movie.imdb_id)}/?language=de` : '';
-  const ratingStr = hasImdb ? ` (★ ${escHtml(movie.imdb_rating)})` : '';
+  const hasImdb = movie.imdb_rating && movie.imdb_rating !== 'N/A' && movie.imdb_id;
+  const imdbUrl = hasImdb ? `https://www.imdb.com/title/${escHtml(movie.imdb_id)}/?language=de` : '';
+  const imdbLink = hasImdb
+    ? ` <a class="imdb-inline" href="${imdbUrl}" target="_blank">(IMDb: ${escHtml(movie.imdb_rating)})</a>`
+    : '';
 
-  // Title: link to IMDb if available
-  const titleHtml = hasImdb
-    ? `<a class="movie-title-link" href="${imdbUrl}" target="_blank">${escHtml(movie.title)}${ratingStr}</a>`
-    : `${escHtml(movie.title)}`;
+  const titleHtml = `${escHtml(movie.title)}${imdbLink}`;
 
   const merged = mergeCinemas(movie.cinemas || []);
   let cinemaHtml = '';
 
   for (const cinema of merged) {
-    const relevantSts = cinema.showtimes.filter(st =>
-      inDateRange(st.date) && isAfternoonOrEvening(st.time)
+    const relevantSts = dedupeShowtimes(
+      cinema.showtimes.filter(st => inDateRange(st.date) && isAfternoonOrEvening(st.time))
     );
     if (!relevantSts.length) continue;
 
@@ -710,15 +706,22 @@ function buildMovieCard(movie) {
 
   if (!cinemaHtml) return '';
 
-  // Poster overlay: plot, director, actors (hover desktop / tap mobile)
-  const hasTip = movie.plot || movie.director || movie.actors;
+  // Poster overlay: always show; use OMDb data if available, else genres/year/runtime
   const plotShort = movie.plot ? movie.plot.slice(0, 130) + (movie.plot.length > 130 ? '…' : '') : '';
-  const tipHtml = hasTip ? `
+  const fallbackInfo = [
+    movie.genres?.length ? movie.genres.join(', ') : '',
+    movie.year || '',
+    movie.runtime ? runtimeStr(movie.runtime) : '',
+  ].filter(Boolean).join(' · ');
+
+  const tipHtml = `
     <div class="poster-tip">
-      ${plotShort ? `<p class="tip-plot">${escHtml(plotShort)}</p>` : ''}
+      ${plotShort
+        ? `<p class="tip-plot">${escHtml(plotShort)}</p>`
+        : (fallbackInfo ? `<p class="tip-plot">${escHtml(fallbackInfo)}</p>` : '')}
       ${movie.director ? `<span class="tip-label">Regie</span><span class="tip-val">${escHtml(movie.director)}</span>` : ''}
-      ${movie.actors  ? `<span class="tip-label">Darsteller</span><span class="tip-val">${escHtml(movie.actors.split(',').slice(0,3).join(', '))}</span>` : ''}
-    </div>` : '';
+      ${movie.actors   ? `<span class="tip-label">Darsteller</span><span class="tip-val">${escHtml(movie.actors.split(',').slice(0,3).join(', '))}</span>` : ''}
+    </div>`;
 
   const posterHtml = movie.poster
     ? `<img src="${escHtml(movie.poster)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
@@ -726,7 +729,7 @@ function buildMovieCard(movie) {
 
   return `
     <div class="movie-card">
-      <div class="poster-col" ${hasTip ? 'onclick="this.classList.toggle(\'tip-open\')" title="Tippen für Filminfos"' : ''}>
+      <div class="poster-col" onclick="this.classList.toggle('tip-open')" title="Tippen für Filminfos">
         ${posterHtml}
         <div class="poster-placeholder" ${movie.poster ? 'style="display:none"' : ''}>🎬</div>
         ${tipHtml}
@@ -739,24 +742,6 @@ function buildMovieCard(movie) {
         <div class="card-meta">${escHtml(metaParts.join(' · '))}</div>
         <div class="cinemas-section">${cinemaHtml}</div>
       </div>
-    </div>`;
-}
-
-// ── Hessen section ─────────────────────────────────────────────────────────
-function buildHessenSection() {
-  return `
-    <div class="hessen-box">
-      <h3>🔍 Film nicht dabei? In anderen Kinos in Hessen suchen</h3>
-      <p>Die App zeigt Wiesbaden, Mainz und Geisenheim. Weitere Kinos in Hessen findest du auf allekinos.de — einfach die Stadt eingeben und nach OmU filtern.</p>
-      <div class="hessen-chips">
-        <a class="hessen-link" href="https://allekinos.de/programm?stadt=Frankfurt am Main" target="_blank">Frankfurt</a>
-        <a class="hessen-link" href="https://allekinos.de/programm?stadt=Darmstadt" target="_blank">Darmstadt</a>
-        <a class="hessen-link" href="https://allekinos.de/programm?stadt=Hanau" target="_blank">Hanau</a>
-        <a class="hessen-link" href="https://allekinos.de/programm?stadt=Offenbach" target="_blank">Offenbach</a>
-        <a class="hessen-link" href="https://allekinos.de/programm?stadt=Marburg" target="_blank">Marburg</a>
-        <a class="hessen-link" href="https://allekinos.de/programm?stadt=Kassel" target="_blank">Kassel</a>
-      </div>
-      <p style="font-size:.72rem">Tipp: Frankfurt und Darmstadt können auch oben über den Stadtfilter direkt in der App aktiviert werden (sobald per GitHub Actions synchronisiert).</p>
     </div>`;
 }
 
@@ -787,7 +772,6 @@ function renderAll() {
     html = `<div id="no-results">Keine Vorstellungen für die gewählten Filter gefunden.</div>`;
   }
 
-  html += buildHessenSection();
   $('content').innerHTML = html;
 
   const ts = new Date(data.generated_at);
