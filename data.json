@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-06-11T08:00:00",
+  "cities": {
+    "Wiesbaden": {
+      "optional": false,
+      "movies": [
+        {
+          "title": "Beispielfilm (wird täglich aktualisiert)",
+          "version": "OmU",
+          "genres": ["Drama"],
+          "year": "2026",
+          "runtime": 110,
+          "fsk": "12",
+          "poster": "",
+          "imdb_rating": "",
+          "imdb_id": "",
+          "cinemas": [
+            {
+              "name": "Caligari Filmbühne",
+              "address": "Marktplatz 9, 65183 Wiesbaden",
+              "city": "Wiesbaden",
+              "showtimes": [
+                { "date": "2026-06-11", "time": "19:30", "url": "" },
+                { "date": "2026-06-12", "time": "20:00", "url": "" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Mainz": {
+      "optional": false,
+      "movies": []
+    },
+    "Geisenheim": {
+      "optional": false,
+      "movies": []
+    },
+    "Frankfurt am Main": {
+      "optional": true,
+      "movies": []
+    },
+    "Sulzbach (Taunus)": {
+      "optional": true,
+      "movies": []
+    }
+  }
+}

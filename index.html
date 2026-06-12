@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmU Kino – Wiesbaden & Mainz</title>
+<style>
+  :root {
+    --bg:       #0f0f0f;
+    --surface:  #1a1a1a;
+    --surface2: #242424;
+    --border:   #333;
+    --accent:   #e8b45a;
+    --accent2:  #c49a3c;
+    --text:     #f0ebe0;
+    --muted:    #888;
+    --star:     #f5c842;
+    --omu-tag:  #2a4a2a;
+    --ov-tag:   #2a3a4a;
+    --radius:   10px;
+    --shadow:   0 4px 20px rgba(0,0,0,.5);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 16px; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.25rem;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    align-items: center;
+  }
+  .logo {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    flex: 0 0 auto;
+    letter-spacing: .5px;
+  }
+  .logo span { color: var(--text); font-weight: 300; }
+
+  #search-input {
+    flex: 1 1 180px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: .9rem;
+    padding: .45rem .75rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  #search-input:focus { border-color: var(--accent); }
+  #search-input::placeholder { color: var(--muted); }
+
+  /* ── Filters ── */
+  .filter-bar {
+    max-width: 900px;
+    margin: .75rem auto 0;
+    padding: 0 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+  .chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .8rem;
+    padding: .3rem .8rem;
+    transition: all .15s;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+
+  /* ── Date tabs ── */
+  .date-tabs {
+    max-width: 900px;
+    margin: .5rem auto 0;
+    padding: 0 1.25rem;
+    display: flex;
+    gap: .4rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .date-tabs::-webkit-scrollbar { display: none; }
+  .date-tab {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    flex: 0 0 auto;
+    font-size: .78rem;
+    padding: .35rem .7rem;
+    text-align: center;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .date-tab:hover { color: var(--text); border-color: var(--accent); }
+  .date-tab.active { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+
+  /* ── Main ── */
+  main {
+    max-width: 900px;
+    margin: 1rem auto;
+    padding: 0 1.25rem 3rem;
+  }
+  #status {
+    color: var(--muted);
+    font-size: .82rem;
+    margin-bottom: .75rem;
+    text-align: right;
+  }
+  #no-results {
+    color: var(--muted);
+    text-align: center;
+    margin-top: 3rem;
+    font-size: 1rem;
+  }
+
+  /* ── Movie card ── */
+  .movie-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .movie-card:hover { border-color: var(--accent); }
+
+  .poster-col {
+    flex: 0 0 80px;
+    position: relative;
+  }
+  .poster-col img {
+    display: block;
+    height: 100%;
+    object-fit: cover;
+    width: 80px;
+    min-height: 120px;
+  }
+  .poster-placeholder {
+    align-items: center;
+    background: var(--surface2);
+    color: var(--muted);
+    display: flex;
+    font-size: 2rem;
+    height: 100%;
+    justify-content: center;
+    min-height: 120px;
+    width: 80px;
+  }
+
+  .card-body {
+    flex: 1;
+    padding: .8rem .8rem .8rem 0;
+    min-width: 0;
+  }
+
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-bottom: .3rem;
+  }
+  .movie-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+  .version-badge {
+    border-radius: 5px;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .5px;
+    padding: .15rem .4rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .badge-omu  { background: var(--omu-tag); color: #6ecf6e; border: 1px solid #4a9a4a; }
+  .badge-ov   { background: var(--ov-tag);  color: #6eaacf; border: 1px solid #4a7a9a; }
+  .badge-omeu { background: #3a2a4a; color: #bf9ee0; border: 1px solid #8a5eae; }
+
+  .card-meta {
+    color: var(--muted);
+    font-size: .78rem;
+    margin-bottom: .5rem;
+  }
+  .imdb-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .2rem;
+    background: #1a1400;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: var(--star);
+    font-size: .75rem;
+    font-weight: 700;
+    padding: .05rem .35rem;
+    margin-left: .4rem;
+    vertical-align: middle;
+    text-decoration: none;
+  }
+  .imdb-badge:hover { border-color: var(--star); }
+
+  /* ── Showtime groups ── */
+  .cinema-group {
+    border-top: 1px solid var(--border);
+    margin-top: .5rem;
+    padding-top: .5rem;
+  }
+  .cinema-group + .cinema-group { margin-top: .4rem; }
+  .cinema-name {
+    color: var(--accent);
+    font-size: .8rem;
+    font-weight: 600;
+    margin-bottom: .3rem;
+  }
+  .cinema-address { color: var(--muted); font-size: .73rem; margin-bottom: .3rem; }
+
+  .time-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+  }
+  .time-slot {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: .78rem;
+    font-weight: 600;
+    padding: .2rem .5rem;
+    text-decoration: none;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .time-slot:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+  .time-slot.no-link { color: var(--muted); cursor: default; border-style: dashed; }
+  .time-slot.no-link:hover { background: var(--surface2); color: var(--muted); border-color: var(--border); }
+
+  /* ── Reverse search panel ── */
+  .reverse-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .reverse-panel h2 {
+    font-size: .95rem;
+    color: var(--accent);
+    margin-bottom: .8rem;
+  }
+  .reverse-results { margin-top: .75rem; }
+  .reverse-hit {
+    border-top: 1px solid var(--border);
+    padding: .5rem 0;
+  }
+  .reverse-hit .rh-title { font-weight: 700; font-size: .9rem; }
+  .reverse-hit .rh-detail { color: var(--muted); font-size: .78rem; margin-top: .2rem; }
+
+  /* ── Meta footer ── */
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: .75rem;
+    padding: 1rem;
+    margin-top: 1rem;
+  }
+  footer a { color: var(--muted); }
+
+  /* ── Loading spinner ── */
+  .spinner {
+    display: flex;
+    justify-content: center;
+    margin: 4rem 0;
+  }
+  .spinner::after {
+    content: "";
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Error box ── */
+  .error-box {
+    background: #2a1010;
+    border: 1px solid #7a3030;
+    border-radius: var(--radius);
+    color: #e07070;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+  }
+
+  /* ── Responsive tweaks ── */
+  @media (max-width: 500px) {
+    .poster-col { flex: 0 0 60px; }
+    .poster-col img, .poster-placeholder { width: 60px; }
+    .movie-title { font-size: .9rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">🎬 OmU Kino <span>Rhein-Main</span></div>
+    <input id="search-input" type="search" placeholder="Film suchen…" autocomplete="off">
+  </div>
+  <!-- City filter chips -->
+  <div class="filter-bar" id="city-chips"></div>
+  <!-- Date tabs -->
+  <div class="date-tabs" id="date-tabs"></div>
+</header>
+
+<main>
+  <div id="status"></div>
+  <div id="content"><div class="spinner"></div></div>
+</main>
+
+<footer>
+  Daten von <a href="https://allekinos.de" target="_blank">allekinos.de</a> &nbsp;·&nbsp;
+  Bewertungen von <a href="https://imdb.com" target="_blank">IMDb</a> via OMDb &nbsp;·&nbsp;
+  Kein Gewähr für Vollständigkeit – bitte beim Kino prüfen.
+</footer>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  data:          null,
+  activeDate:    null,   // ISO string or 'all'
+  activeCities:  new Set(),
+  searchQuery:   '',
+  dates:         [],     // sorted unique ISO dates from all showtimes
+  allCities:     [],
+};
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function isoToDisplay(iso) {
+  if (!iso) return '?';
+  const d = new Date(iso + 'T00:00:00');
+  const days  = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const months = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  return `${days[d.getDay()]} ${d.getDate()}. ${months[d.getMonth()]}`;
+}
+
+function isToday(iso) {
+  return iso === new Date().toISOString().slice(0,10);
+}
+
+function runtimeStr(mins) {
+  if (!mins) return '';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h ${m > 0 ? m + 'min' : ''}`.trim() : `${m}min`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────────
+async function loadData() {
+  if (location.protocol === 'file:') {
+    throw new Error('FILE_PROTOCOL');
+  }
+  try {
+    const res = await fetch('data.json?v=' + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch(e) {
+    throw new Error('Daten konnten nicht geladen werden: ' + e.message);
+  }
+}
+
+// ── Collect all unique dates from the dataset ─────────────────────────────────
+function collectDates(data) {
+  const seen = new Set();
+  for (const [, cityData] of Object.entries(data.cities)) {
+    for (const movie of (cityData.movies || [])) {
+      for (const cinema of (movie.cinemas || [])) {
+        for (const st of (cinema.showtimes || [])) {
+          if (st.date) seen.add(st.date);
+        }
+      }
+    }
+  }
+  return [...seen].sort();
+}
+
+// ── Render date tabs ──────────────────────────────────────────────────────────
+function renderDateTabs() {
+  const tabs = $('date-tabs');
+  tabs.innerHTML = '';
+
+  const allBtn = document.createElement('button');
+  allBtn.className = 'date-tab' + (state.activeDate === 'all' ? ' active' : '');
+  allBtn.textContent = 'Alle';
+  allBtn.onclick = () => { state.activeDate = 'all'; renderAll(); };
+  tabs.appendChild(allBtn);
+
+  for (const iso of state.dates) {
+    const btn = document.createElement('button');
+    btn.className = 'date-tab' + (state.activeDate === iso ? ' active' : '');
+    const label = isToday(iso) ? 'Heute' : isoToDisplay(iso);
+    btn.textContent = label;
+    btn.onclick = () => { state.activeDate = iso; renderAll(); };
+    tabs.appendChild(btn);
+  }
+}
+
+// ── Render city chips ─────────────────────────────────────────────────────────
+function renderCityChips() {
+  const bar = $('city-chips');
+  bar.innerHTML = '';
+
+  for (const city of state.allCities) {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (state.activeCities.has(city.name) ? ' active' : '');
+    const label = city.optional ? `${city.name} (optional)` : city.name;
+    chip.textContent = label;
+    chip.onclick = () => {
+      if (state.activeCities.has(city.name)) {
+        state.activeCities.delete(city.name);
+      } else {
+        state.activeCities.add(city.name);
+      }
+      renderAll();
+    };
+    bar.appendChild(chip);
+  }
+}
+
+// ── Filter logic ──────────────────────────────────────────────────────────────
+function filterMovies(movies, cityName) {
+  if (!state.activeCities.has(cityName)) return [];
+
+  return movies.filter(movie => {
+    // Search filter
+    if (state.searchQuery) {
+      const q = state.searchQuery.toLowerCase();
+      if (!movie.title.toLowerCase().includes(q) &&
+          !movie.cinemas.some(c => c.name.toLowerCase().includes(q))) {
+        return false;
+      }
+    }
+
+    // Date filter: keep movie if it has at least one showtime on activeDate
+    if (state.activeDate && state.activeDate !== 'all') {
+      const hasSt = movie.cinemas.some(c =>
+        c.showtimes.some(st => st.date === state.activeDate)
+      );
+      if (!hasSt) return false;
+    }
+
+    return true;
+  });
+}
+
+function filterShowtimes(showtimes) {
+  if (!state.activeDate || state.activeDate === 'all') return showtimes;
+  return showtimes.filter(st => st.date === state.activeDate);
+}
+
+// ── Build movie card HTML ─────────────────────────────────────────────────────
+function buildMovieCard(movie) {
+  const badgeClass = movie.version === 'OmU' ? 'badge-omu'
+                   : movie.version === 'OmeU' ? 'badge-omeu'
+                   : 'badge-ov';
+
+  const metaParts = [];
+  if (movie.year)    metaParts.push(movie.year);
+  if (movie.runtime) metaParts.push(runtimeStr(movie.runtime));
+  if (movie.fsk)     metaParts.push(`FSK ${movie.fsk}`);
+  if (movie.genres && movie.genres.length) metaParts.push(movie.genres.slice(0,3).join(', '));
+
+  const imdbHtml = movie.imdb_rating && movie.imdb_rating !== 'N/A'
+    ? `<a class="imdb-badge" href="https://www.imdb.com/title/${escHtml(movie.imdb_id||'')}" target="_blank">
+         ★ ${escHtml(movie.imdb_rating)}
+       </a>`
+    : '';
+
+  const posterHtml = movie.poster
+    ? `<img src="${escHtml(movie.poster)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=poster-placeholder>🎬</div>'">`
+    : `<div class="poster-placeholder">🎬</div>`;
+
+  // Cinema blocks
+  const cinemaParts = [];
+  for (const cinema of movie.cinemas) {
+    const sts = filterShowtimes(cinema.showtimes);
+    if (!sts.length && state.activeDate !== 'all') continue;
+    if (!cinema.showtimes.length) continue;
+
+    const displaySts = sts.length ? sts : cinema.showtimes;
+    const timeSlots = displaySts.map(st => {
+      if (st.url) {
+        return `<a class="time-slot" href="${escHtml(st.url)}" target="_blank" title="${st.date ? isoToDisplay(st.date) + ' ' : ''}${st.time}">${st.time}</a>`;
+      } else {
+        return `<span class="time-slot no-link" title="${st.date ? isoToDisplay(st.date) + ' ' : ''}${st.time}">${st.time}</span>`;
+      }
+    }).join('');
+
+    cinemaParts.push(`
+      <div class="cinema-group">
+        <div class="cinema-name">${escHtml(cinema.name)}</div>
+        ${cinema.address ? `<div class="cinema-address">${escHtml(cinema.address)}</div>` : ''}
+        <div class="time-slots">${timeSlots}</div>
+      </div>
+    `);
+  }
+
+  if (!cinemaParts.length) return '';
+
+  return `
+    <div class="movie-card">
+      <div class="poster-col">${posterHtml}</div>
+      <div class="card-body">
+        <div class="card-top">
+          <div class="movie-title">${escHtml(movie.title)}</div>
+          <span class="version-badge ${badgeClass}">${escHtml(movie.version)}</span>
+        </div>
+        <div class="card-meta">
+          ${escHtml(metaParts.join(' · '))}${imdbHtml}
+        </div>
+        ${cinemaParts.join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Reverse search ────────────────────────────────────────────────────────────
+function buildReverseSearch(data, query) {
+  if (!query || query.length < 2) return '';
+  const q = query.toLowerCase();
+  const hits = [];
+
+  for (const [cityName, cityData] of Object.entries(data.cities)) {
+    for (const movie of (cityData.movies || [])) {
+      if (!movie.title.toLowerCase().includes(q)) continue;
+      for (const cinema of movie.cinemas) {
+        const sts = state.activeDate && state.activeDate !== 'all'
+          ? cinema.showtimes.filter(s => s.date === state.activeDate)
+          : cinema.showtimes;
+        if (!sts.length) continue;
+        hits.push({ movie, cinema, cityName, sts });
+      }
+    }
+  }
+
+  if (!hits.length) return '';
+
+  const rows = hits.map(h => {
+    const times = h.sts.map(st => {
+      const label = (h.sts.length > 1 && state.activeDate === 'all')
+        ? `${st.date ? isoToDisplay(st.date)+' ' : ''}${st.time}`
+        : st.time;
+      return st.url
+        ? `<a class="time-slot" href="${escHtml(st.url)}" target="_blank">${escHtml(label)}</a>`
+        : `<span class="time-slot no-link">${escHtml(label)}</span>`;
+    }).join(' ');
+
+    return `
+      <div class="reverse-hit">
+        <div class="rh-title">${escHtml(h.movie.title)} <span style="opacity:.6;font-weight:400;font-size:.75em">${h.movie.version}</span></div>
+        <div class="rh-detail">${escHtml(h.cinema.name)}, ${escHtml(h.cityName)}</div>
+        <div class="time-slots" style="margin-top:.3rem">${times}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="reverse-panel">
+      <h2>🔍 Suche: „${escHtml(query)}"</h2>
+      <div class="reverse-results">${rows}</div>
+    </div>
+  `;
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+function renderAll() {
+  renderDateTabs();
+  renderCityChips();
+
+  const content = $('content');
+  const data    = state.data;
+
+  let html = '';
+
+  // Reverse search panel (when search query is active)
+  if (state.searchQuery.length >= 2) {
+    html += buildReverseSearch(data, state.searchQuery);
+  }
+
+  // Normal listing
+  let totalShown = 0;
+  for (const cityName of state.allCities.map(c => c.name)) {
+    const cityData = data.cities[cityName];
+    if (!cityData) continue;
+
+    const movies = filterMovies(cityData.movies || [], cityName);
+
+    for (const movie of movies) {
+      const card = buildMovieCard(movie);
+      if (card) {
+        html += card;
+        totalShown++;
+      }
+    }
+  }
+
+  if (!totalShown && !state.searchQuery) {
+    html += `<div id="no-results">Keine OmU/OV-Vorstellungen für die gewählten Filter gefunden.</div>`;
+  }
+
+  content.innerHTML = html;
+
+  // Update status
+  const ts = new Date(data.generated_at);
+  const tsStr = ts.toLocaleString('de-DE', {day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'});
+  $('status').textContent = `Stand: ${tsStr} Uhr · ${totalShown} Film${totalShown !== 1 ? 'e' : ''} angezeigt`;
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+async function init() {
+  let data;
+  try {
+    data = await loadData();
+  } catch (e) {
+    const isFileProto = e.message === 'FILE_PROTOCOL';
+    $('content').innerHTML = isFileProto ? `
+      <div class="error-box" style="line-height:1.8">
+        <strong>📂 Lokale Datei – kein direktes Öffnen möglich</strong><br><br>
+        Browser erlauben aus Sicherheitsgründen kein Laden von <code>data.json</code>,
+        wenn die HTML-Datei direkt per <code>file://</code> geöffnet wird.<br><br>
+        <strong>So geht's:</strong><br>
+        → Dateien auf <strong>GitHub</strong> hochladen und <strong>GitHub Pages</strong> aktivieren
+        (siehe <code>SETUP.md</code>) – dann klappt es über die echte URL.<br><br>
+        <em>Oder zum lokalen Testen:</em> Im Terminal in den Projektordner wechseln und
+        <code>python3 -m http.server 8080</code> ausführen,
+        dann <a href="http://localhost:8080" style="color:inherit">http://localhost:8080</a> öffnen.
+      </div>` : `
+      <div class="error-box">
+        <strong>⚠ Daten nicht verfügbar</strong><br>
+        ${escHtml(e.message)}<br><br>
+        Stell sicher, dass <code>data.json</code> im selben Ordner liegt und GitHub Actions
+        mindestens einmal erfolgreich gelaufen ist.
+      </div>`;
+    return;
+  }
+
+  state.data = data;
+
+  // Build city list (non-optional first)
+  const optional = [], required = [];
+  for (const [name, cityData] of Object.entries(data.cities)) {
+    if (cityData.optional) optional.push({ name, optional: true });
+    else required.push({ name, optional: false });
+  }
+  state.allCities = [...required, ...optional];
+
+  // Default: all non-optional cities active
+  state.activeCities = new Set(required.map(c => c.name));
+
+  // Collect & sort dates
+  state.dates = collectDates(data);
+
+  // Default date: today (if available), else 'all'
+  const today = new Date().toISOString().slice(0,10);
+  state.activeDate = state.dates.includes(today) ? today : (state.dates[0] || 'all');
+
+  // Search handler
+  $('search-input').addEventListener('input', e => {
+    state.searchQuery = e.target.value.trim();
+    renderAll();
+  });
+
+  renderAll();
+}
+
+init();
+</script>
+</body>
+</html>
