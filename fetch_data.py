@@ -154,9 +154,10 @@ def parse_city(html: str, city_name: str) -> list[dict]:
         # --- poster ---
         img = h2.find_previous("img")
         poster = ""
-        if img and img.get("src"):
-            src = img["src"]
-            poster = src if src.startswith("http") else "https://allekinos.de" + src
+        if img:
+            src = img.get("data-src") or img.get("src") or ""
+            if src and not src.startswith("data:"):
+                poster = src if src.startswith("http") else "https://allekinos.de" + src
 
         # --- metadata: genres, year, runtime, FSK ---
         genres = []
