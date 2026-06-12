@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OmU Kino – Rhein-Main</title>
+<title>bene's OmU-Suche – Rhein-Main</title>
 <style>
   :root {
     --bg:        #eef2f7;
@@ -11,6 +11,7 @@
     --surface2:  #f4f7fb;
     --border:    #c8d8eb;
     --navy:      #1e3a5f;
+    --navy2:     #16305a;
     --blue:      #2563eb;
     --blue-lt:   #dbeafe;
     --blue-dk:   #1d4ed8;
@@ -18,8 +19,6 @@
     --muted:     #64748b;
     --star:      #d97706;
     --omu-bg:    #dcfce7; --omu-tx: #166534; --omu-bd: #86efac;
-    --ov-bg:     #ede9fe;  --ov-tx:  #5b21b6; --ov-bd:  #c4b5fd;
-    --omeu-bg:   #fce7f3; --omeu-tx:#9d174d; --omeu-bd:#f9a8d4;
     --radius:    12px;
     --shadow:    0 2px 12px rgba(37,99,235,.08);
   }
@@ -34,36 +33,91 @@
 
   /* ── Header ── */
   header {
-    background: var(--navy);
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f2340 100%);
     color: #fff;
-    padding: .9rem 1.25rem;
+    padding: 0;
     position: sticky; top: 0; z-index: 100;
-    box-shadow: 0 2px 10px rgba(0,0,0,.2);
+    box-shadow: 0 2px 16px rgba(0,0,0,.3);
+    overflow: hidden;
   }
-  .header-row {
+
+  /* Film-strip decoration */
+  .filmstrip {
+    height: 8px;
+    background: repeating-linear-gradient(
+      to right,
+      #fff0 0px, #fff0 6px,
+      rgba(255,255,255,.18) 6px, rgba(255,255,255,.18) 14px,
+      #fff0 14px, #fff0 24px
+    );
+    background-color: rgba(255,255,255,.07);
+    border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+
+  .header-inner {
     max-width: 860px;
     margin: 0 auto;
+    padding: .8rem 1.25rem .85rem;
     display: flex;
     align-items: center;
-    gap: .75rem;
+    gap: 1rem;
     flex-wrap: wrap;
   }
-  .logo { font-size: 1.1rem; font-weight: 700; letter-spacing: .3px; flex: 0 0 auto; }
-  .logo span { opacity: .65; font-weight: 400; }
+
+  .header-branding {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .header-icon {
+    font-size: 2.1rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .header-text { display: flex; flex-direction: column; }
+
+  .header-sub {
+    font-size: .65rem;
+    font-weight: 500;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.5);
+    margin-bottom: .1rem;
+  }
+
+  .header-title {
+    font-size: 1.18rem;
+    font-weight: 800;
+    letter-spacing: -.2px;
+    line-height: 1.2;
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  .header-title .omi {
+    color: #93c5fd;
+    font-style: italic;
+    font-weight: 700;
+  }
 
   #search-input {
     flex: 1 1 160px;
-    background: rgba(255,255,255,.12);
-    border: 1px solid rgba(255,255,255,.25);
+    min-width: 120px;
+    background: rgba(255,255,255,.1);
+    border: 1.5px solid rgba(255,255,255,.2);
     border-radius: 8px;
     color: #fff;
     font-size: .88rem;
-    padding: .4rem .75rem;
+    padding: .42rem .8rem;
     outline: none;
-    transition: border-color .2s;
+    transition: border-color .2s, background .2s;
   }
-  #search-input::placeholder { color: rgba(255,255,255,.5); }
-  #search-input:focus { border-color: rgba(255,255,255,.6); }
+  #search-input::placeholder { color: rgba(255,255,255,.45); }
+  #search-input:focus { border-color: rgba(255,255,255,.6); background: rgba(255,255,255,.15); }
 
   /* ── Filter bar ── */
   .filter-wrap {
@@ -108,9 +162,6 @@
   }
   .chip:hover { border-color: var(--blue); color: var(--blue); }
   .chip.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
-  .chip.omu.active  { background: var(--omu-bg); border-color: var(--omu-bd); color: var(--omu-tx); }
-  .chip.ov.active   { background: var(--ov-bg);  border-color: var(--ov-bd);  color: var(--ov-tx);  }
-  .chip.omeu.active { background: var(--omeu-bg);border-color: var(--omeu-bd);color: var(--omeu-tx);}
 
   /* ── Date filter ── */
   .date-filter-wrap {
@@ -236,9 +287,7 @@
     border-width: 1px;
     border-style: solid;
   }
-  .badge-omu  { background: var(--omu-bg); color: var(--omu-tx); border-color: var(--omu-bd); }
-  .badge-ov   { background: var(--ov-bg);  color: var(--ov-tx);  border-color: var(--ov-bd);  }
-  .badge-omeu { background: var(--omeu-bg);color: var(--omeu-tx);border-color: var(--omeu-bd);}
+  .badge-omu { background: var(--omu-bg); color: var(--omu-tx); border-color: var(--omu-bd); }
 
   .card-meta {
     color: var(--muted);
@@ -353,7 +402,9 @@
   }
   footer a { color: var(--muted); }
 
-  @media (max-width: 480px) {
+  @media (max-width: 520px) {
+    .header-title { font-size: 1rem; white-space: normal; }
+    .header-icon { font-size: 1.7rem; }
     .poster-col { flex: 0 0 72px; width: 72px; }
     .movie-title { font-size: .92rem; }
     .filter-label, .filter-label-inline { flex: 0 0 100%; margin-bottom: -.1rem; }
@@ -363,21 +414,26 @@
 <body>
 
 <header>
-  <div class="header-row">
-    <div class="logo">🎬 OmU Kino <span>Rhein-Main</span></div>
-    <input id="search-input" type="search" placeholder="Film suchen…" autocomplete="off">
+  <div class="filmstrip"></div>
+  <div class="header-inner">
+    <div class="header-branding">
+      <div class="header-icon">🎞️</div>
+      <div class="header-text">
+        <span class="header-sub">Originalfassung · Rhein-Main</span>
+        <div class="header-title">bene's kleine <span class="omi">Omi ehhh</span> OmU-Suche</div>
+      </div>
+    </div>
+    <input id="search-input" type="search" placeholder="🔍 Film oder Kino suchen…" autocomplete="off">
   </div>
 </header>
 
 <div class="filter-wrap">
-  <!-- City filter -->
   <div class="filter-section">
     <span class="filter-label">Stadt</span>
     <div id="city-chips"></div>
   </div>
 </div>
 
-<!-- Date filter -->
 <div class="date-filter-wrap">
   <div class="date-filter-inner">
     <span class="filter-label-inline">Zeitraum</span>
@@ -405,39 +461,45 @@
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  data:            null,
-
-  activeCities:    new Set(),
-  searchQuery:     '',
-  dateFrom:        null,
-  dateTo:          null,
-  quickFilter:     'week',   // 'today' | 'week' | 'nextweek' | 'all' | 'custom'
-  allCities:       [],
+  data:         null,
+  activeCities: new Set(),
+  searchQuery:  '',
+  dateFrom:     null,
+  dateTo:       null,
+  quickFilter:  'week',
+  allCities:    [],
 };
 
 const QUICK = [
   { key: 'today',    label: 'Heute' },
   { key: 'week',     label: 'Diese Woche' },
   { key: 'nextweek', label: 'Nächste Woche' },
+  { key: 'month',    label: 'Diesen Monat' },
   { key: 'all',      label: 'Alle' },
 ];
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-
 function toISO(d) { return d.toISOString().slice(0, 10); }
-
 function todayISO() { return toISO(new Date()); }
 
 function weekRange(offsetWeeks = 0) {
   const now = new Date();
-  const dow = now.getDay(); // 0=Sun
+  const dow = now.getDay();
   const mon = new Date(now);
   mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1) + offsetWeeks * 7);
   mon.setHours(0, 0, 0, 0);
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
   return { from: toISO(mon), to: toISO(sun) };
+}
+
+function monthRange() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth() + 1;
+  const lastDay = new Date(y, m, 0).getDate();
+  const to = `${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  return { from: todayISO(), to };
 }
 
 function applyQuickFilter(key) {
@@ -451,17 +513,19 @@ function applyQuickFilter(key) {
   } else if (key === 'nextweek') {
     const r = weekRange(1);
     state.dateFrom = r.from; state.dateTo = r.to;
+  } else if (key === 'month') {
+    const r = monthRange();
+    state.dateFrom = r.from; state.dateTo = r.to;
   } else {
     state.dateFrom = null; state.dateTo = null;
   }
-  // sync date inputs
   $('date-from').value = state.dateFrom || '';
   $('date-to').value   = state.dateTo   || '';
 }
 
 function isoToDisplay(iso) {
   if (!iso) return '?';
-  const d   = new Date(iso + 'T00:00:00');
+  const d = new Date(iso + 'T00:00:00');
   const days   = ['So','Mo','Di','Mi','Do','Fr','Sa'];
   const months = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   return `${days[d.getDay()]} ${d.getDate()}. ${months[d.getMonth()]}`;
@@ -477,16 +541,25 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Always hide dates before today; apply range filter on top
 function inDateRange(iso) {
-  if (!iso) return true;  // undatierte Zeiten immer anzeigen
+  if (!iso) return true;  // undatierte Zeiten anzeigen
+  const today = todayISO();
+  if (iso < today) return false;  // vergangene Tage grundsätzlich verstecken
   if (!state.dateFrom && !state.dateTo) return true;
   if (state.dateFrom && iso < state.dateFrom) return false;
   if (state.dateTo   && iso > state.dateTo)   return false;
   return true;
 }
 
+// Filter out showings before 14:00 (school screenings)
+function isAfternoonOrEvening(time) {
+  if (!time) return false;
+  const h = parseInt(time.split(':')[0], 10);
+  return h >= 14;
+}
+
 // ── Dedup & merge cinemas ──────────────────────────────────────────────────
-// The scraper sometimes emits the same cinema twice; merge by name.
 function mergeCinemas(cinemas) {
   const map = new Map();
   for (const c of cinemas) {
@@ -494,13 +567,13 @@ function mergeCinemas(cinemas) {
     if (!map.has(key)) {
       map.set(key, { ...c, showtimes: [...c.showtimes] });
     } else {
-      // merge showtimes, avoid duplicates
       const existing = map.get(key);
       const seen = new Set(existing.showtimes.map(s => s.date + '|' + s.time));
       for (const st of c.showtimes) {
-        if (!seen.has(st.date + '|' + st.time)) {
+        const k = st.date + '|' + st.time;
+        if (!seen.has(k)) {
           existing.showtimes.push(st);
-          seen.add(st.date + '|' + st.time);
+          seen.add(k);
         }
       }
     }
@@ -532,7 +605,6 @@ async function loadData() {
 }
 
 // ── Build chips ────────────────────────────────────────────────────────────
-
 function renderCityChips() {
   const el = $('city-chips');
   el.style.display = 'flex'; el.style.gap = '.4rem'; el.style.flexWrap = 'wrap';
@@ -556,16 +628,13 @@ function renderQuickBtns() {
     const btn = document.createElement('button');
     btn.className = 'chip' + (state.quickFilter === q.key ? ' active' : '');
     btn.textContent = q.label;
-    btn.onclick = () => { applyQuickFilter(q.key); state.quickFilter = q.key; renderAll(); };
+    btn.onclick = () => { applyQuickFilter(q.key); renderAll(); };
     el.appendChild(btn);
   }
 }
 
 // ── Build movie card ───────────────────────────────────────────────────────
 function buildMovieCard(movie) {
-  const badgeCls = movie.version === 'OmU' ? 'badge-omu'
-                 : movie.version === 'OmeU' ? 'badge-omeu' : 'badge-ov';
-
   const metaParts = [];
   if (movie.year)    metaParts.push(movie.year);
   if (movie.runtime) metaParts.push(runtimeStr(movie.runtime));
@@ -576,11 +645,14 @@ function buildMovieCard(movie) {
     ? `<a class="imdb-badge" href="https://www.imdb.com/title/${escHtml(movie.imdb_id||'')}" target="_blank">★ ${escHtml(movie.imdb_rating)}</a>`
     : '';
 
-  // Filter & merge cinemas
   const merged = mergeCinemas(movie.cinemas || []);
   let cinemaHtml = '';
+
   for (const cinema of merged) {
-    const relevantSts = cinema.showtimes.filter(st => inDateRange(st.date));
+    // Apply date AND time filter (no pre-14:00 showings)
+    const relevantSts = cinema.showtimes.filter(st =>
+      inDateRange(st.date) && isAfternoonOrEvening(st.time)
+    );
     if (!relevantSts.length) continue;
 
     const groups = groupByDate(relevantSts);
@@ -621,10 +693,10 @@ function buildMovieCard(movie) {
       <div class="card-body">
         <div class="card-top">
           <div class="movie-title">${escHtml(movie.title)}</div>
-          <span class="version-badge ${badgeCls}">${escHtml(movie.version)}</span>
+          <span class="version-badge badge-omu">OmU</span>
         </div>
         <div class="card-meta">
-          ${escHtml(metaParts.join(' · '))}${imdbHtml}
+          ${escHtml(metaParts.join(' · '))}${imdbHtml ? ' &nbsp;' + imdbHtml : ''}
         </div>
         <div class="cinemas-section">${cinemaHtml}</div>
       </div>
@@ -645,13 +717,11 @@ function renderAll() {
     if (!cityData) continue;
 
     for (const movie of (cityData.movies || [])) {
-      // Search filter
       if (state.searchQuery.length >= 2) {
         const q = state.searchQuery.toLowerCase();
         if (!movie.title.toLowerCase().includes(q) &&
             !(movie.cinemas||[]).some(c => c.name.toLowerCase().includes(q))) continue;
       }
-
       const card = buildMovieCard(movie);
       if (card) { html += card; count++; }
     }
@@ -690,7 +760,7 @@ async function init() {
 
   state.data = data;
 
-  // Build city list – Frankfurt ausschließen
+  // City list – Frankfurt ausschließen
   const req = [], opt = [];
   for (const [name, d] of Object.entries(data.cities)) {
     if (name === 'Frankfurt am Main') continue;
@@ -699,16 +769,12 @@ async function init() {
   state.allCities = [...req, ...opt];
   state.activeCities = new Set(req.map(c => c.name));
 
-  // Default date range: diese Woche
   applyQuickFilter('week');
 
-  // Search
   $('search-input').addEventListener('input', e => {
     state.searchQuery = e.target.value.trim();
     renderAll();
   });
-
-  // Manual date inputs
   $('date-from').addEventListener('change', e => {
     state.dateFrom = e.target.value || null;
     state.quickFilter = 'custom';

@@ -209,7 +209,7 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
             text = elem.get_text(strip=True)
 
             if "kino=" in href:
-                # New cinema
+                # New cinema block
                 if text and len(cinemas) < MAX_CINEMAS:
                     current = {"name": text[:100], "address": "",
                                "city": city_name, "showtimes": []}
@@ -217,8 +217,14 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
 
             elif TIME_RE.match(text) and current is not None:
                 if len(current["showtimes"]) < MAX_SHOWTIMES:
-                    # Try to get date from td column position
+                    # Try td column position first
                     date = date_from_td(elem, dates)
+                    if date is None and dates:
+                        # Sequential fallback: linked times = future dates in order
+                        n_linked = sum(1 for s in current["showtimes"] if s.get("url"))
+                        has_today = any(s.get("date") == today for s in current["showtimes"])
+                        idx = (1 if has_today else 0) + n_linked
+                        date = dates[idx] if idx < len(dates) else None
                     current["showtimes"].append({
                         "time": text,
                         "date": date,
@@ -228,8 +234,12 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         elif isinstance(elem, str):
             t = elem.strip()
             if TIME_RE.match(t) and current is not None:
+                # Skip: text nodes that are direct children of <a> tags
+                # were already counted above as linked showtimes.
+                par = getattr(elem, "parent", None)
+                if par and getattr(par, "name", None) == "a":
+                    continue
                 if len(current["showtimes"]) < MAX_SHOWTIMES:
-                    # Unlinked time → today's showing (already started/no booking)
                     current["showtimes"].append({
                         "time": t,
                         "date": today,
