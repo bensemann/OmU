@@ -424,9 +424,8 @@ const state = {
 };
 
 const VERSIONS = [
-  { key: 'OmU',  label: 'OmU',  cls: 'omu'  },
-  { key: 'OV',   label: 'OV',   cls: 'ov'   },
-  { key: 'OmeU', label: 'OmeU', cls: 'omeu' },
+  { key: 'OmU', label: 'OmU', cls: 'omu' },
+  { key: 'OV',  label: 'OV',  cls: 'ov'  },
 ];
 const QUICK = [
   { key: 'today',    label: 'Heute' },
@@ -491,7 +490,7 @@ function escHtml(s) {
 }
 
 function inDateRange(iso) {
-  if (!iso) return false;
+  if (!iso) return true;  // undatierte Zeiten immer anzeigen
   if (!state.dateFrom && !state.dateTo) return true;
   if (state.dateFrom && iso < state.dateFrom) return false;
   if (state.dateTo   && iso > state.dateTo)   return false;
@@ -722,9 +721,10 @@ async function init() {
 
   state.data = data;
 
-  // Build city list
+  // Build city list – Frankfurt ausschließen
   const req = [], opt = [];
   for (const [name, d] of Object.entries(data.cities)) {
+    if (name === 'Frankfurt am Main') continue;
     (d.optional ? opt : req).push({ name, optional: !!d.optional });
   }
   state.allCities = [...req, ...opt];
