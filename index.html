@@ -70,7 +70,7 @@
     margin-bottom: .08rem;
   }
   .header-title {
-    font-size: 1.22rem;
+    font-size: 1.42rem;
     font-weight: 800;
     letter-spacing: -.2px;
     line-height: 1.2;
@@ -180,6 +180,7 @@
     display: flex;
     margin-bottom: 1rem;
     overflow: hidden;
+    position: relative;
     transition: box-shadow .2s, border-color .2s;
   }
   .movie-card:hover { box-shadow: 0 4px 20px rgba(37,99,235,.13); border-color: var(--blue); }
@@ -209,40 +210,55 @@
     color: var(--blue);
     opacity: .4;
   }
-  /* Film-Info-Overlay beim Hover/Tap auf Poster */
+  /* Film-Info-Overlay – deckt gesamte Karte ab */
   .poster-tip {
     position: absolute;
     inset: 0;
-    background: rgba(10,20,40,.91);
+    z-index: 5;
+    background: rgba(10,20,40,.93);
     color: #e2e8f0;
-    font-size: .62rem;
-    line-height: 1.45;
-    padding: .45rem .4rem;
+    font-size: .82rem;
+    line-height: 1.55;
+    padding: 1rem 1.1rem;
     overflow-y: auto;
     opacity: 0;
     pointer-events: none;
-    transition: opacity .18s;
-    border-radius: 0;
+    transition: opacity .2s;
+    cursor: pointer;
   }
-  .poster-col:hover .poster-tip,
-  .poster-col.tip-open .poster-tip {
+  /* Desktop: Hover auf Poster zeigt Overlay */
+  .movie-card:has(.poster-col:hover) .poster-tip,
+  /* Mobil / Klick: Klasse auf der Karte */
+  .movie-card.tip-open .poster-tip {
     opacity: 1;
     pointer-events: auto;
   }
+  .poster-tip .tip-title {
+    font-size: .9rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: .5rem;
+  }
   .poster-tip .tip-plot {
-    margin-bottom: .35rem;
+    margin-bottom: .5rem;
     color: #cbd5e1;
   }
   .poster-tip .tip-label {
     color: #93c5fd;
     font-weight: 700;
-    font-size: .58rem;
+    font-size: .72rem;
     letter-spacing: .3px;
     text-transform: uppercase;
     display: block;
-    margin-top: .25rem;
+    margin-top: .4rem;
   }
   .poster-tip .tip-val { color: #e2e8f0; }
+  .poster-tip .tip-hint {
+    margin-top: .7rem;
+    font-size: .68rem;
+    color: rgba(255,255,255,.35);
+    text-align: right;
+  }
 
   .card-body {
     flex: 1;
@@ -307,13 +323,6 @@
     text-decoration: none;
   }
   a.cinema-name:hover { text-decoration: underline; }
-  .cinema-addr {
-    color: var(--muted);
-    font-size: .71rem;
-    display: block;
-    margin-top: -.1rem;
-    margin-bottom: .1rem;
-  }
   .date-group { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; }
   .date-label {
     color: var(--muted);
@@ -456,6 +465,7 @@ function cityLabel(name) { return CITY_DISPLAY[name] || name; }
 const state = {
   data:         null,
   activeCities: new Set(),
+  prevCities:   null,
   searchQuery:  '',
   dateFrom:     null,
   dateTo:       null,
@@ -568,15 +578,16 @@ function mergeCinemas(cinemas) {
   return [...map.values()];
 }
 
-// ── Deduplicate showtimes within a cinema (same date+time) ────────────────
+// ── Deduplicate showtimes within a cinema (same date+time, prefer URL) ────
 function dedupeShowtimes(showtimes) {
-  const seen = new Set();
-  return showtimes.filter(st => {
+  const map = new Map();
+  for (const st of showtimes) {
     const k = (st.date || '') + '|' + st.time;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+    if (!map.has(k) || (st.url && !map.get(k).url)) {
+      map.set(k, st);
+    }
+  }
+  return [...map.values()];
 }
 
 // ── Group showtimes by date ────────────────────────────────────────────────
@@ -612,12 +623,18 @@ function renderCityChips() {
   el.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap';
   el.innerHTML = '';
 
-  // "Alle" chip
+  // "Alle" chip – beim Aktivieren vorherige Auswahl merken, beim Deaktivieren wiederherstellen
   const alleBtn = document.createElement('button');
   alleBtn.className = 'chip' + (allCitiesActive() ? ' active' : '');
   alleBtn.textContent = 'Alle';
   alleBtn.onclick = () => {
-    state.activeCities = new Set(state.allCities.map(c => c.name));
+    if (!allCitiesActive()) {
+      state.prevCities = new Set(state.activeCities);
+      state.activeCities = new Set(state.allCities.map(c => c.name));
+    } else {
+      state.activeCities = state.prevCities || new Set(['Wiesbaden']);
+      state.prevCities = null;
+    }
     renderAll();
   };
   el.appendChild(alleBtn);
@@ -691,23 +708,23 @@ function buildMovieCard(movie) {
         </div>`;
     }
 
-    // Cinema name + address as Google Maps link
+    // Cinema name + city as Google Maps link (no street address shown)
     const mapsQuery = encodeURIComponent((cinema.name + ' ' + (cinema.address || '') + ' ' + (cinema.city || '')).trim());
     const mapsUrl   = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-    const nameHtml  = `<a class="cinema-name" href="${mapsUrl}" target="_blank">${escHtml(cinema.name)}</a>`;
-    const addrHtml  = cinema.address ? `<span class="cinema-addr">${escHtml(cinema.address)}</span>` : '';
+    const cityLabel2 = cityLabel(cinema.city || '');
+    const nameHtml  = `<a class="cinema-name" href="${mapsUrl}" target="_blank">${escHtml(cinema.name)}${cityLabel2 ? ' · ' + escHtml(cityLabel2) : ''}</a>`;
 
     cinemaHtml += `
       <div class="cinema-row">
-        ${nameHtml}${addrHtml}
+        ${nameHtml}
         ${dateGroupsHtml}
       </div>`;
   }
 
   if (!cinemaHtml) return '';
 
-  // Poster overlay: always show; use OMDb data if available, else genres/year/runtime
-  const plotShort = movie.plot ? movie.plot.slice(0, 130) + (movie.plot.length > 130 ? '…' : '') : '';
+  // Poster overlay – deckt gesamte Karte ab (Klick/Tap auf Poster oder Overlay)
+  const plotShort = movie.plot ? movie.plot.slice(0, 200) + (movie.plot.length > 200 ? '…' : '') : '';
   const fallbackInfo = [
     movie.genres?.length ? movie.genres.join(', ') : '',
     movie.year || '',
@@ -715,12 +732,14 @@ function buildMovieCard(movie) {
   ].filter(Boolean).join(' · ');
 
   const tipHtml = `
-    <div class="poster-tip">
+    <div class="poster-tip" onclick="this.closest('.movie-card').classList.remove('tip-open')">
+      <div class="tip-title">${escHtml(movie.title)}</div>
       ${plotShort
         ? `<p class="tip-plot">${escHtml(plotShort)}</p>`
         : (fallbackInfo ? `<p class="tip-plot">${escHtml(fallbackInfo)}</p>` : '')}
       ${movie.director ? `<span class="tip-label">Regie</span><span class="tip-val">${escHtml(movie.director)}</span>` : ''}
       ${movie.actors   ? `<span class="tip-label">Darsteller</span><span class="tip-val">${escHtml(movie.actors.split(',').slice(0,3).join(', '))}</span>` : ''}
+      <p class="tip-hint">Klicken zum Schließen</p>
     </div>`;
 
   const posterHtml = movie.poster
@@ -729,10 +748,9 @@ function buildMovieCard(movie) {
 
   return `
     <div class="movie-card">
-      <div class="poster-col" onclick="this.classList.toggle('tip-open')" title="Tippen für Filminfos">
+      <div class="poster-col" onclick="this.closest('.movie-card').classList.toggle('tip-open')" title="Tippen für Filminfos">
         ${posterHtml}
         <div class="poster-placeholder" ${movie.poster ? 'style="display:none"' : ''}>🎬</div>
-        ${tipHtml}
       </div>
       <div class="card-body">
         <div class="card-top">
@@ -742,6 +760,7 @@ function buildMovieCard(movie) {
         <div class="card-meta">${escHtml(metaParts.join(' · '))}</div>
         <div class="cinemas-section">${cinemaHtml}</div>
       </div>
+      ${tipHtml}
     </div>`;
 }
 

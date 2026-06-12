@@ -55,8 +55,8 @@ def parse_date_header(text: str) -> str | None:
     year = datetime.now().year
     try:
         d = datetime(year, month, day)
-        if d < datetime.now() - timedelta(days=1):
-            d = datetime(year + 1, month, day)
+        # allekinos.de shows only the next ~8 days, never past years
+        # → no year rollover; past dates get filtered by the frontend
         return d.strftime("%Y-%m-%d")
     except ValueError:
         return None
