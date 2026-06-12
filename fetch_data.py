@@ -38,6 +38,12 @@ MONTH_MAP = {
     "Oktober": 10, "November": 11, "Dezember": 12,
 }
 
+# Safety limits to prevent data.json from exploding
+MAX_CINEMAS_PER_MOVIE   = 12
+MAX_SHOWTIMES_PER_CINEMA = 25
+MAX_STR_LEN              = 300   # cap on any single string value
+MAX_OUTPUT_MB            = 5     # abort if output exceeds this
+
 omdb_cache: dict = {}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,6 +76,13 @@ def parse_runtime(text: str) -> int | None:
     if m:
         return int(m.group(1))
     return None
+
+
+def clean_url(url: str) -> str:
+    """Strip data-URIs and cap length."""
+    if not url or url.startswith("data:"):
+        return ""
+    return url[:MAX_STR_LEN]
 
 
 def get_omdb(title: str, year: str | None = None) -> dict:
@@ -123,6 +136,25 @@ def extract_dates(soup: BeautifulSoup) -> list[str]:
     return dates
 
 
+def find_movie_container(h2) -> object:
+    """
+    Walk up from h2 to find the tightest reasonable container.
+    Stop at article/section, or after 4 steps – whichever comes first.
+    Avoid climbing all the way to <main> (which holds the entire page).
+    """
+    container = h2
+    for _ in range(4):
+        parent = container.parent
+        if parent is None:
+            break
+        if parent.name in ("article", "section"):
+            return parent
+        if parent.name in ("main", "body", "html", "[document]"):
+            break  # don't go higher than this
+        container = parent
+    return container
+
+
 def parse_city(html: str, city_name: str) -> list[dict]:
     soup  = BeautifulSoup(html, "html.parser")
     dates = extract_dates(soup)
@@ -143,13 +175,7 @@ def parse_city(html: str, city_name: str) -> list[dict]:
         version     = "OmU" if is_omu else ("OmeU" if is_omeu else "OV")
         clean_title = VERSION_RE.sub("", title_text).strip()
 
-        # --- navigate up to the movie 'card' container ---
-        container = h2
-        for _ in range(6):
-            if container.parent:
-                container = container.parent
-            if container.name in ("article", "section", "main"):
-                break
+        container = find_movie_container(h2)
 
         # --- poster ---
         img = h2.find_previous("img")
@@ -157,7 +183,7 @@ def parse_city(html: str, city_name: str) -> list[dict]:
         if img:
             src = img.get("data-src") or img.get("src") or ""
             if src and not src.startswith("data:"):
-                poster = src if src.startswith("http") else "https://allekinos.de" + src
+                poster = src[:MAX_STR_LEN] if src.startswith("http") else ("https://allekinos.de" + src)[:MAX_STR_LEN]
 
         # --- metadata: genres, year, runtime, FSK ---
         genres = []
@@ -183,41 +209,31 @@ def parse_city(html: str, city_name: str) -> list[dict]:
             continue
 
         movies.append({
-            "title":      clean_title,
-            "version":    version,
-            "genres":     genres,
-            "year":       year,
-            "runtime":    runtime,
-            "fsk":        fsk,
-            "poster":     poster or omdb.get("poster_omdb", ""),
+            "title":       clean_title,
+            "version":     version,
+            "genres":      genres[:5],
+            "year":        year,
+            "runtime":     runtime,
+            "fsk":         fsk,
+            "poster":      poster or omdb.get("poster_omdb", ""),
             "imdb_rating": omdb.get("imdb_rating", ""),
-            "imdb_id":    omdb.get("imdb_id", ""),
-            "cinemas":    cinemas,
+            "imdb_id":     omdb.get("imdb_id", ""),
+            "cinemas":     cinemas,
         })
 
     return movies
 
 
 def extract_cinemas(container, dates: list[str], city_name: str) -> list[dict]:
-    """
-    Extract cinema name + per-date showtimes from a movie card.
-
-    Structure on allekinos.de (as observed):
-      <a href="?kino=...">Cinema Name</a>
-      <span/p>Address</span>
-      <table> or grid with one row/cell per day, each containing time links.
-    """
     cinemas: list[dict] = []
 
-    # Find cinema-name links (they filter by ?kino=)
     kino_links = container.find_all("a", href=re.compile(r"kino="))
 
-    for kino_a in kino_links:
+    for kino_a in kino_links[:MAX_CINEMAS_PER_MOVIE]:
         cinema_name = kino_a.get_text(strip=True)
         if not cinema_name:
             continue
 
-        # Address: next non-empty sibling text
         address = ""
         for sibling in kino_a.next_siblings:
             t = sibling.get_text(strip=True) if hasattr(sibling, "get_text") else str(sibling).strip()
@@ -226,19 +242,15 @@ def extract_cinemas(container, dates: list[str], city_name: str) -> list[dict]:
                     address = t
                     break
 
-        # Showtime table/rows: find the nearest parent that acts as a grid
-        # and extract one cell per date column.
         showtimes = extract_showtimes_for_cinema(kino_a, dates)
 
-        if showtimes or True:  # always add, even without showtimes
-            cinemas.append({
-                "name":      cinema_name,
-                "address":   address,
-                "city":      city_name,
-                "showtimes": showtimes,
-            })
+        cinemas.append({
+            "name":      cinema_name[:100],
+            "address":   address[:100],
+            "city":      city_name,
+            "showtimes": showtimes,
+        })
 
-    # Fallback: cinema name shown as plain text (e.g. on single-cinema filtered pages)
     if not cinemas:
         cinemas = extract_cinemas_from_text(container, dates, city_name)
 
@@ -246,140 +258,102 @@ def extract_cinemas(container, dates: list[str], city_name: str) -> list[dict]:
 
 
 def extract_showtimes_for_cinema(kino_a, dates: list[str]) -> list[dict]:
-    """
-    Walk forward from the cinema-name anchor to collect date-indexed showtimes.
-
-    allekinos.de renders a table where each <tr> (or equivalent row) corresponds
-    to one day in the date header. Within a row, <a> tags carry ticket URLs and
-    plain text nodes carry unlinkable times (e.g. already-started today).
-    """
-    showtimes: list[dict] = []
-
-    # Find the showtime grid: look for nearest table or container with rows
-    # that follows the kino_a element.
     parent = kino_a.parent
 
-    # Walk up a bit to find the cinema block
     for _ in range(5):
         if parent is None:
             break
-        # Look for a table sibling or descendant
         table = parent.find("table")
         if table:
-            showtimes = parse_showtime_table(table, dates)
-            return showtimes
+            return parse_showtime_table(table, dates)
 
-        # Or look for a row-like structure (divs/tds that act as day cells)
         rows = parent.find_all(["tr", "div"], class_=re.compile(r"row|day|show|time", re.I))
         if rows:
-            showtimes = parse_showtime_rows(rows, dates)
-            return showtimes
+            return parse_showtime_rows(rows, dates)
 
         parent = parent.parent
 
-    # Last resort: collect all time-links after kino_a until next cinema link
-    showtimes = collect_time_links_after(kino_a, dates)
-    return showtimes
+    return collect_time_links_after(kino_a, dates)
 
 
 def parse_showtime_table(table, dates: list[str]) -> list[dict]:
-    """Parse an HTML <table> where each <td> = one date column."""
     showtimes: list[dict] = []
-    rows = table.find_all("tr")
-    for row in rows:
+    for row in table.find_all("tr"):
         cells = row.find_all(["td", "th"])
         for i, cell in enumerate(cells):
             date = dates[i] if i < len(dates) else None
             for a in cell.find_all("a"):
                 t = a.get_text(strip=True)
                 if TIME_RE.match(t):
-                    showtimes.append({
-                        "date": date,
-                        "time": t,
-                        "url":  a.get("href", ""),
-                    })
-            # Unlinked times
+                    showtimes.append({"date": date, "time": t, "url": clean_url(a.get("href", ""))})
+                    if len(showtimes) >= MAX_SHOWTIMES_PER_CINEMA:
+                        return showtimes
             for string in cell.strings:
                 t = string.strip()
                 if TIME_RE.match(t):
-                    showtimes.append({
-                        "date": date,
-                        "time": t,
-                        "url":  "",
-                    })
+                    showtimes.append({"date": date, "time": t, "url": ""})
+                    if len(showtimes) >= MAX_SHOWTIMES_PER_CINEMA:
+                        return showtimes
     return showtimes
 
 
 def parse_showtime_rows(rows, dates: list[str]) -> list[dict]:
-    """Parse a list of row-elements where row[i] = dates[i]."""
     showtimes: list[dict] = []
     for i, row in enumerate(rows):
         date = dates[i] if i < len(dates) else None
         for a in row.find_all("a"):
             t = a.get_text(strip=True)
             if TIME_RE.match(t):
-                showtimes.append({"date": date, "time": t, "url": a.get("href", "")})
+                showtimes.append({"date": date, "time": t, "url": clean_url(a.get("href", ""))})
+                if len(showtimes) >= MAX_SHOWTIMES_PER_CINEMA:
+                    return showtimes
         for string in row.strings:
             t = string.strip()
             if TIME_RE.match(t):
                 showtimes.append({"date": date, "time": t, "url": ""})
+                if len(showtimes) >= MAX_SHOWTIMES_PER_CINEMA:
+                    return showtimes
     return showtimes
 
 
 def collect_time_links_after(kino_a, dates: list[str]) -> list[dict]:
-    """
-    Fallback: walk siblings/descendants after kino_a, collecting time links
-    until we hit the next cinema link. Associate times with dates by position.
-    """
     showtimes: list[dict] = []
-    date_idx  = 0
-    in_cinema = False
 
     for el in kino_a.next_elements:
-        if el is kino_a:
-            in_cinema = True
-            continue
-
-        if not in_cinema:
-            continue
-
-        # Stop when we hit another cinema link
         if hasattr(el, "attrs") and "kino=" in el.attrs.get("href", ""):
             break
-
         if hasattr(el, "name") and el.name == "a":
             t = el.get_text(strip=True)
             if TIME_RE.match(t):
-                date = dates[date_idx] if date_idx < len(dates) else None
-                showtimes.append({"date": date, "time": t, "url": el.get("href", "")})
-                # After collecting times for one day, advance date on next different time or new group
+                idx  = len(showtimes)
+                date = dates[idx % len(dates)] if dates else None
+                showtimes.append({"date": date, "time": t, "url": clean_url(el.get("href", ""))})
+                if len(showtimes) >= MAX_SHOWTIMES_PER_CINEMA:
+                    break
         elif isinstance(el, str):
             for t in re.findall(r'\d{1,2}:\d{2}', el):
                 if TIME_RE.match(t):
-                    date = dates[date_idx] if date_idx < len(dates) else None
+                    idx  = len(showtimes)
+                    date = dates[idx % len(dates)] if dates else None
                     showtimes.append({"date": date, "time": t, "url": ""})
+                    if len(showtimes) >= MAX_SHOWTIMES_PER_CINEMA:
+                        break
 
     return showtimes
 
 
 def extract_cinemas_from_text(container, dates, city_name) -> list[dict]:
-    """
-    Fallback for pages where cinema is plain text (e.g. single-cinema pages).
-    Find the cinema name by exclusion: not a link with kino= or genre=,
-    appears between movie description and showtimes.
-    """
-    # Collect all a-tags with time text → these are showtimes
     time_links = []
     for a in container.find_all("a"):
         t = a.get_text(strip=True)
         if TIME_RE.match(t):
-            time_links.append({"time": t, "url": a.get("href", ""), "date": None})
+            time_links.append({"time": t, "url": clean_url(a.get("href", "")), "date": None})
+        if len(time_links) >= MAX_SHOWTIMES_PER_CINEMA:
+            break
 
-    # Try to find a cinema name from text
     text_lines = [t.strip() for t in container.get_text("\n").split("\n") if t.strip()]
-    cinema_name = ""
+    cinema_name = city_name
     for line in text_lines:
-        # A cinema name is a medium-length line, not containing times or genres
         if (10 < len(line) < 60
                 and not re.search(r'\d{1,2}:\d{2}', line)
                 and not re.search(r'FSK|Std\.|Min\.|20\d\d', line)
@@ -387,36 +361,28 @@ def extract_cinemas_from_text(container, dates, city_name) -> list[dict]:
             cinema_name = line
             break
 
-    if not cinema_name:
-        cinema_name = city_name
-
-    # Assign dates by position (naive)
     dated: list[dict] = []
     for i, st in enumerate(time_links):
         st["date"] = dates[i % len(dates)] if dates else None
         dated.append(st)
 
-    return [{"name": cinema_name, "address": "", "city": city_name, "showtimes": dated}]
+    return [{"name": cinema_name[:100], "address": "", "city": city_name, "showtimes": dated}]
 
 
-# ── Output sanitizer ─────────────────────────────────────────────────────────
+# ── Debug helper ──────────────────────────────────────────────────────────────
 
-def sanitize_output(obj, max_str: int = 400):
-    """
-    Recursively walk the output dict/list and:
-    - Drop any string that starts with 'data:' (base64 inline images/URIs)
-    - Cap any remaining string at max_str characters
-    This prevents allekinos.de lazy-load placeholders from bloating data.json.
-    """
-    if isinstance(obj, dict):
-        return {k: sanitize_output(v, max_str) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [sanitize_output(i, max_str) for i in obj]
-    if isinstance(obj, str):
-        if obj.startswith("data:"):
-            return ""
-        return obj[:max_str] if len(obj) > max_str else obj
-    return obj
+def log_sizes(output: dict) -> None:
+    total = 0
+    for city, data in output["cities"].items():
+        size = len(json.dumps(data, ensure_ascii=False))
+        total += size
+        print(f"  {city}: {size/1000:.0f} KB, {len(data['movies'])} Filme")
+        for movie in data["movies"][:2]:
+            ms = len(json.dumps(movie, ensure_ascii=False))
+            nc = len(movie.get("cinemas", []))
+            ns = sum(len(c["showtimes"]) for c in movie.get("cinemas", []))
+            print(f"    '{movie['title']}': {ms/1000:.1f} KB, {nc} Kinos, {ns} Zeiten")
+    print(f"  Gesamt: {total/1_000_000:.2f} MB")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -446,14 +412,22 @@ def main():
                 "error":    str(exc),
             }
 
-    output = sanitize_output(output)
+    print("\nGrößen-Diagnose:")
+    log_sizes(output)
+
+    total_bytes = len(json.dumps(output, ensure_ascii=False))
+    print(f"\nOutput vor Schreiben: {total_bytes/1_000_000:.2f} MB")
+
+    if total_bytes > MAX_OUTPUT_MB * 1_000_000:
+        print(f"WARNUNG: Output ({total_bytes/1_000_000:.1f} MB) überschreitet {MAX_OUTPUT_MB} MB – Abbruch!")
+        raise SystemExit(1)
 
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     size_mb = os.path.getsize("data.json") / 1_000_000
-    total = sum(len(c["movies"]) for c in output["cities"].values())
-    print(f"\n✓ data.json gespeichert ({total} Filme, {size_mb:.1f} MB)")
+    total_films = sum(len(c["movies"]) for c in output["cities"].values())
+    print(f"✓ data.json gespeichert ({total_films} Filme, {size_mb:.2f} MB)")
 
 
 if __name__ == "__main__":
