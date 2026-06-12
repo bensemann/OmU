@@ -399,6 +399,26 @@ def extract_cinemas_from_text(container, dates, city_name) -> list[dict]:
     return [{"name": cinema_name, "address": "", "city": city_name, "showtimes": dated}]
 
 
+# ── Output sanitizer ─────────────────────────────────────────────────────────
+
+def sanitize_output(obj, max_str: int = 400):
+    """
+    Recursively walk the output dict/list and:
+    - Drop any string that starts with 'data:' (base64 inline images/URIs)
+    - Cap any remaining string at max_str characters
+    This prevents allekinos.de lazy-load placeholders from bloating data.json.
+    """
+    if isinstance(obj, dict):
+        return {k: sanitize_output(v, max_str) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_output(i, max_str) for i in obj]
+    if isinstance(obj, str):
+        if obj.startswith("data:"):
+            return ""
+        return obj[:max_str] if len(obj) > max_str else obj
+    return obj
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -426,11 +446,14 @@ def main():
                 "error":    str(exc),
             }
 
+    output = sanitize_output(output)
+
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
+    size_mb = os.path.getsize("data.json") / 1_000_000
     total = sum(len(c["movies"]) for c in output["cities"].values())
-    print(f"\n✓ data.json gespeichert ({total} Filme gesamt)")
+    print(f"\n✓ data.json gespeichert ({total} Filme, {size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":
