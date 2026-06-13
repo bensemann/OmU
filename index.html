@@ -141,8 +141,14 @@
   .fav-btn.fav-active { color: #f5c518; opacity: 1; }
 
   /* Favoriten chip – amber accent */
-  .chip.fav-chip.active { background: #f5a623; border-color: #f5a623; color: #fff; }
-  .chip.fav-chip:hover   { border-color: #f5a623; color: #f5a623; }
+  .chip.fav-chip.active { background: #f5c518; border-color: #f5c518; color: #1a1a1a; }
+  .chip.fav-chip:hover   { border-color: #f5c518; color: #f5c518; }
+
+  /* Divider between Zeitraum chips and Filter section */
+  .filter-divider {
+    flex: 1;            /* pushes Filter label + chip to the right */
+    display: block;
+  }
 
   /* ── Search (subtle, below filter) ── */
   .search-wrap {
@@ -411,10 +417,14 @@
   .time-slot.no-link { color: var(--muted); background: var(--surface2); border-color: var(--border); border-style: dashed; }
   .time-slot.no-link:hover { background: var(--surface2); color: var(--muted); border-color: var(--border); }
 
-  /* ── Plot-Text in Karte – vollständig, kein Abschneiden ── */
+  /* ── Plot-Text in Karte – kurz, 3 Zeilen ── */
   .card-plot {
     color: var(--muted);
     font-size: .76rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     line-height: 1.5;
     margin-top: .2rem;
   }
@@ -580,6 +590,8 @@
   <div class="filter-section">
     <span class="filter-label">Zeitraum</span>
     <div class="quick-btns" id="quick-btns" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+    <span class="filter-divider"></span>
+    <span class="filter-label" style="flex:0 0 auto">Filter</span>
     <button id="fav-chip" class="chip fav-chip" onclick="toggleFavFilter()">★ Favoriten</button>
   </div>
 </div>
@@ -919,7 +931,7 @@ function buildMovieCard(movie) {
   if (!cinemaHtml) return '';
 
   // Poster overlay – deckt gesamte Karte ab (Klick/Tap auf Poster oder Overlay)
-  const plotShort = movie.plot ? movie.plot.slice(0, 200) + (movie.plot.length > 200 ? '…' : '') : '';
+  const plotFull = movie.plot || '';
   const fallbackInfo = [
     movie.genres?.length ? movie.genres.join(', ') : '',
     movie.year || '',
@@ -929,8 +941,8 @@ function buildMovieCard(movie) {
   const tipHtml = `
     <div class="poster-tip" onclick="this.closest('.movie-card').classList.remove('tip-open')">
       <div class="tip-title">${escHtml(movie.title)}</div>
-      ${plotShort
-        ? `<p class="tip-plot">${escHtml(plotShort)}</p>`
+      ${plotFull
+        ? `<p class="tip-plot">${escHtml(plotFull)}</p>`
         : (fallbackInfo ? `<p class="tip-plot">${escHtml(fallbackInfo)}</p>` : '')}
       ${movie.director ? `<span class="tip-label">Regie</span><span class="tip-val">${escHtml(movie.director)}</span>` : ''}
       ${movie.actors   ? `<span class="tip-label">Darsteller</span><span class="tip-val">${escHtml(movie.actors.split(',').slice(0,3).join(', '))}</span>` : ''}

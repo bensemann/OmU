@@ -378,18 +378,20 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
     # Also strip leftover parentheses artefacts
     clean_title = re.sub(r'\s*\(\s*\)\s*', '', clean_title).strip()
 
-    # ── poster (img immediately before h2, only if it belongs to this film) ──
+    # ── poster (img before h2, only if it belongs to this film) ──
+    # Scan up to 3 preceding imgs in case an icon or ad img sits between
+    # the film poster and the h2.
     poster = ""
-    img = h2.find_previous("img")
-    if img:
-        # Only use if no other h2 sits between this img and the current h2.
-        # find_next("h2") from the img must point to THIS h2, not a different one.
+    for img in h2.find_all_previous("img", limit=3):
+        # Only accept if no other h2 sits between this img and the current h2.
         next_h2_from_img = img.find_next("h2")
-        if next_h2_from_img is h2:
-            src = img.get("data-src") or img.get("src") or ""
-            if src and not src.startswith("data:"):
-                poster = src if src.startswith("http") else "https://allekinos.de" + src
-                poster = poster[:MAX_URL_LEN]
+        if next_h2_from_img is not h2:
+            break  # We've passed into a different film's territory
+        src = img.get("data-src") or img.get("src") or ""
+        if src and not src.startswith("data:") and not src.endswith(".svg"):
+            poster = src if src.startswith("http") else "https://allekinos.de" + src
+            poster = poster[:MAX_URL_LEN]
+            break
 
     # ── metadata (pull from text near h2) ──
     meta_text = h2.get_text(" ", strip=True)
