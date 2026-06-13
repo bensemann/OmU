@@ -123,6 +123,89 @@
   .chip:hover { border-color: var(--blue); color: var(--blue); }
   .chip.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 
+  /* ── Inline filter separators ── */
+  .filter-inline-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border);
+    margin: .05rem .45rem;
+    flex-shrink: 0;
+  }
+  .filter-inline-label {
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── Rating slider ── */
+  #rating-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 140px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+    accent-color: var(--blue);
+  }
+  #rating-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--blue);
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.2);
+  }
+  #rating-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    background: var(--blue);
+    cursor: pointer;
+  }
+  .rating-val {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--blue);
+    min-width: 2.8rem;
+  }
+
+  /* ── Link-copy button ── */
+  .link-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: .8rem;
+    color: var(--muted);
+    opacity: .4;
+    padding: .1rem .2rem;
+    transition: opacity .15s, color .15s;
+    flex-shrink: 0;
+  }
+  .link-btn:hover { opacity: 1; color: var(--blue); }
+  .link-btn.copied { color: #22c55e; opacity: 1; }
+
+  /* ── Trailer button in overlay ── */
+  .tip-trailer-btn {
+    background: #dc2626;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-size: .75rem;
+    font-weight: 600;
+    padding: .25rem .6rem;
+    transition: background .15s;
+  }
+  .tip-trailer-btn:hover { background: #b91c1c; }
+
   /* ── Favorites star button ── */
   .fav-btn {
     background: none;
@@ -144,11 +227,6 @@
   .chip.fav-chip.active { background: #f5c518; border-color: #f5c518; color: #1a1a1a; }
   .chip.fav-chip:hover   { border-color: #f5c518; color: #f5c518; }
 
-  /* Divider between Zeitraum chips and Filter section */
-  .filter-divider {
-    flex: 1;            /* pushes Filter label + chip to the right */
-    display: block;
-  }
 
   /* ── Search (subtle, below filter) ── */
   .search-wrap {
@@ -516,9 +594,9 @@
     .movie-card    { flex-direction: column; }
     .poster-col    { flex: 0 0 auto; width: 100%; cursor: pointer; }
     .poster-col img {
+      display: block;
       width: 100%;
-      aspect-ratio: 2 / 3;      /* klassisches Kinoplakat-Format */
-      max-height: 280px;         /* nicht zu riesig auf großen Handys */
+      height: 260px;             /* feste Höhe – kein aspect-ratio-Konflikt */
       object-fit: cover;
       object-position: center top;
     }
@@ -581,7 +659,7 @@
   </div>
 </header>
 
-<!-- Stadt + Zeitraum filter -->
+<!-- Filter bar -->
 <div class="filter-wrap">
   <div class="filter-section">
     <span class="filter-label">Stadt</span>
@@ -589,9 +667,17 @@
   </div>
   <div class="filter-section">
     <span class="filter-label">Zeitraum</span>
-    <div class="quick-btns" id="quick-btns" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
-    <span class="filter-divider"></span>
-    <span class="filter-label" style="flex:0 0 auto">Filter</span>
+    <div id="quick-btns" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+  </div>
+  <div class="filter-section" id="filter-row">
+    <span class="filter-label">Filter</span>
+    <div id="genre-chips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+    <span class="filter-inline-sep"></span>
+    <span class="filter-inline-label">Bewertung</span>
+    <input id="rating-slider" type="range" min="0" max="9" step="0.5" value="0"
+      oninput="state.minRating=+this.value; document.getElementById('rating-val').textContent=+this.value===0?'Alle':this.value+'+'; renderAll()">
+    <span id="rating-val" class="rating-val">Alle</span>
+    <span class="filter-inline-sep"></span>
     <button id="fav-chip" class="chip fav-chip" onclick="toggleFavFilter()">★ Favoriten</button>
   </div>
 </div>
@@ -665,7 +751,62 @@ const state = {
   allCities:    [],
   favourites:   loadFavs(),
   onlyFavs:     false,
+  minRating:    0,           // 0 = Alle
+  activeGenres: new Set(),   // empty = Alle
 };
+
+// ── Direktlink (anchor copy) ───────────────────────────────────────────────
+function slugify(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+function copyLink(slug, btn) {
+  const url = location.origin + location.pathname + '#film-' + slug;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.classList.add('copied');
+    btn.title = 'Link kopiert!';
+    setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Link kopieren'; }, 2000);
+  });
+}
+
+// ── Trailer toggle ─────────────────────────────────────────────────────────
+function openTrailer(title) {
+  const url = 'https://www.youtube.com/results?search_query=' +
+    encodeURIComponent(title + ' Trailer deutsch');
+  window.open(url, '_blank', 'noopener');
+}
+
+// ── Genre filter ───────────────────────────────────────────────────────────
+function renderGenreChips() {
+  if (!state.data) return;
+  // Collect all genres across all cities
+  const allGenres = new Set();
+  for (const cd of Object.values(state.data.cities)) {
+    for (const m of (cd.movies || [])) {
+      for (const g of (m.genres || [])) if (g) allGenres.add(g);
+    }
+  }
+  const genres = [...allGenres].sort();
+  const el  = document.getElementById('genre-chips');
+  el.innerHTML = '';
+  if (!genres.length) return;
+  const alleBtn = document.createElement('button');
+  alleBtn.className = 'chip' + (!state.activeGenres.size ? ' active' : '');
+  alleBtn.textContent = 'Alle';
+  alleBtn.onclick = () => { state.activeGenres.clear(); renderAll(); };
+  el.appendChild(alleBtn);
+  for (const g of genres) {
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (state.activeGenres.has(g) ? ' active' : '');
+    btn.textContent = g;
+    btn.onclick = () => {
+      if (state.activeGenres.has(g)) state.activeGenres.delete(g);
+      else state.activeGenres.add(g);
+      renderAll();
+    };
+    el.appendChild(btn);
+  }
+}
+
 
 const QUICK = [
   { key: 'today',    label: 'Heute' },
@@ -884,7 +1025,8 @@ function buildMovieCard(movie) {
   const titleHtml = `${escHtml(movie.title)}${imdbLink}${tmdbLink}`;
 
   const trailerUrl  = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + ' Trailer')}`;
-  const trailerHtml = `<a class="trailer-badge" href="${trailerUrl}" target="_blank">▶ Trailer</a>`;
+  const trailerHtml = `<a class="trailer-badge" href="${trailerUrl}" target="_blank" onclick="event.stopPropagation()">▶ Trailer</a>`;
+  const slug = slugify(movie.title);
 
   const merged = mergeCinemas(movie.cinemas || []);
   let cinemaHtml = '';
@@ -946,9 +1088,10 @@ function buildMovieCard(movie) {
         : (fallbackInfo ? `<p class="tip-plot">${escHtml(fallbackInfo)}</p>` : '')}
       ${movie.director ? `<span class="tip-label">Regie</span><span class="tip-val">${escHtml(movie.director)}</span>` : ''}
       ${movie.actors   ? `<span class="tip-label">Darsteller</span><span class="tip-val">${escHtml(movie.actors.split(',').slice(0,3).join(', '))}</span>` : ''}
-      <div style="margin-top:.5rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <div style="margin-top:.5rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
         ${hasImdb ? `<a href="${imdbUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:.75rem;color:#f5c518;font-weight:700;text-decoration:none">⭐ IMDb ${escHtml(movie.imdb_rating)}</a>` : ''}
         ${hasTmdb ? `<a href="${tmdbUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:.75rem;color:#01b4e4;font-weight:700;text-decoration:none">⭐ TMDb ${escHtml(movie.tmdb_rating)}</a>` : ''}
+        <button class="tip-trailer-btn" onclick="openTrailer('${escHtml(movie.title)}'); event.stopPropagation()">▶ Trailer</button>
       </div>
       <p class="tip-hint tip-hint-touch">Tippen zum Schließen</p>
     </div>`;
@@ -958,7 +1101,7 @@ function buildMovieCard(movie) {
     : '';
 
   return `
-    <div class="movie-card">
+    <div class="movie-card" id="film-${slug}">
       <div class="poster-col" onclick="this.closest('.movie-card').classList.toggle('tip-open')" title="Tippen für Filminfos">
         ${posterHtml}
         <div class="poster-placeholder" ${movie.poster ? 'style="display:none"' : ''}>🎬</div>
@@ -968,6 +1111,8 @@ function buildMovieCard(movie) {
           <div class="movie-title">${titleHtml}</div>
           ${trailerHtml}
           <span class="version-badge">OmU</span>
+          <button class="link-btn" title="Link kopieren"
+            onclick="copyLink('${slug}', this); event.stopPropagation()">🔗</button>
           <button class="fav-btn${state.favourites.has(movie.title) ? ' fav-active' : ''}" data-title="${escHtml(movie.title)}"
             onclick="toggleFav(this.dataset.title, this)"
             title="${state.favourites.has(movie.title) ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}"
@@ -993,7 +1138,13 @@ function toggleFavFilter() {
 function renderAll() {
   renderCityChips();
   renderQuickBtns();
-  // Keep fav chip in sync (e.g. after city change)
+  renderGenreChips();
+  const slider = document.getElementById('rating-slider');
+  if (slider) {
+    slider.value = state.minRating;
+    document.getElementById('rating-val').textContent =
+      state.minRating === 0 ? 'Alle' : state.minRating + '+';
+  }
   const favChip = document.getElementById('fav-chip');
   if (favChip) favChip.classList.toggle('active', state.onlyFavs);
 
@@ -1007,6 +1158,16 @@ function renderAll() {
     for (const movie of (cityData.movies || [])) {
       // Favourites filter
       if (state.onlyFavs && !state.favourites.has(movie.title)) continue;
+      // Genre filter
+      if (state.activeGenres.size > 0) {
+        const mg = new Set(movie.genres || []);
+        if (![...state.activeGenres].some(g => mg.has(g))) continue;
+      }
+      // Rating filter
+      if (state.minRating > 0) {
+        const r = parseFloat(movie.tmdb_rating || '0');
+        if (!r || r < state.minRating) continue;
+      }
       if (state.searchQuery.length >= 2) {
         const q = state.searchQuery.toLowerCase();
         if (!movie.title.toLowerCase().includes(q) &&
@@ -1060,6 +1221,15 @@ async function init() {
   state.activeCities = new Set(['Wiesbaden']);
 
   applyQuickFilter('week');
+
+  // Scroll to anchored film if URL contains #film-...
+  if (location.hash.startsWith('#film-')) {
+    // renderAll is called inside applyQuickFilter → wait one frame
+    requestAnimationFrame(() => {
+      const el = document.querySelector(location.hash);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
 
   $('search-input').addEventListener('input', e => {
     state.searchQuery = e.target.value.trim();
