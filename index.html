@@ -210,21 +210,6 @@
     min-width: 2.8rem;
   }
 
-  /* ── Link-copy button ── */
-  .link-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: .8rem;
-    color: var(--muted);
-    opacity: .4;
-    padding: .1rem .2rem;
-    transition: opacity .15s, color .15s;
-    flex-shrink: 0;
-  }
-  .link-btn:hover { opacity: 1; color: var(--blue); }
-  .link-btn.copied { color: #22c55e; opacity: 1; }
-
   /* ── Trailer button in overlay ── */
   .tip-trailer-btn {
     background: #dc2626;
@@ -711,12 +696,12 @@
       <div id="genre-menu" class="genre-menu" style="display:none"></div>
     </div>
     <span class="filter-inline-sep"></span>
-    <span class="filter-inline-label">Bewertung</span>
-    <input id="rating-slider" type="range" min="0" max="9" step="0.5" value="0"
-      oninput="state.minRating=+this.value; document.getElementById('rating-val').textContent=+this.value===0?'Alle':this.value+'+'; renderAll()">
-    <span id="rating-val" class="rating-val">Alle</span>
-    <span class="filter-inline-sep"></span>
     <button id="fav-chip" class="chip fav-chip" onclick="toggleFavFilter()">★ Favoriten</button>
+    <span class="filter-inline-sep"></span>
+    <span class="filter-inline-label">Bewertung</span>
+    <input id="rating-slider" type="range" min="5" max="10" step="1" value="10"
+      oninput="state.minRating=+this.value>=10?0:+this.value; document.getElementById('rating-val').textContent=+this.value>=10?'Alle':this.value+'+'; renderAll()">
+    <span id="rating-val" class="rating-val">Alle</span>
   </div>
 </div>
 
@@ -793,17 +778,9 @@ const state = {
   activeGenres: new Set(),   // empty = Alle
 };
 
-// ── Direktlink (anchor copy) ───────────────────────────────────────────────
+// ── Direktlink (anchor for hash-scroll, no copy button) ───────────────────
 function slugify(title) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-function copyLink(slug, btn) {
-  const url = location.origin + location.pathname + '#film-' + slug;
-  navigator.clipboard.writeText(url).then(() => {
-    btn.classList.add('copied');
-    btn.title = 'Link kopiert!';
-    setTimeout(() => { btn.classList.remove('copied'); btn.title = 'Link kopieren'; }, 2000);
-  });
 }
 
 // ── Trailer toggle ─────────────────────────────────────────────────────────
@@ -1189,8 +1166,6 @@ function buildMovieCard(movie) {
           <div class="movie-title">${titleHtml}</div>
           ${trailerHtml}
           <span class="version-badge">OmU</span>
-          <button class="link-btn" title="Link kopieren"
-            onclick="copyLink('${slug}', this); event.stopPropagation()">🔗</button>
           <button class="fav-btn${state.favourites.has(movie.title) ? ' fav-active' : ''}" data-title="${escHtml(movie.title)}"
             onclick="toggleFav(this.dataset.title, this)"
             title="${state.favourites.has(movie.title) ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}"
@@ -1219,7 +1194,7 @@ function renderAll() {
   renderGenreChips();
   const slider = document.getElementById('rating-slider');
   if (slider) {
-    slider.value = state.minRating;
+    slider.value = state.minRating === 0 ? 10 : state.minRating;
     document.getElementById('rating-val').textContent =
       state.minRating === 0 ? 'Alle' : state.minRating + '+';
   }
