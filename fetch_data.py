@@ -94,22 +94,33 @@ def get_omdb(title: str, year: str | None = None) -> dict:
     key = f"{title}|{year}"
     if key in omdb_cache:
         return omdb_cache[key]
-    params = {"apikey": OMDB_KEY, "t": title, "type": "movie"}
+
+    def _query(params: dict) -> dict:
+        try:
+            r = requests.get("https://www.omdbapi.com/", params=params, timeout=6)
+            d = r.json()
+            if d.get("Response") == "True":
+                return {
+                    "imdb_rating": d.get("imdbRating", ""),
+                    "imdb_id":     d.get("imdbID", ""),
+                    "poster_omdb": d.get("Poster", ""),
+                    "plot":        d.get("Plot", ""),
+                    "director":    d.get("Director", ""),
+                    "actors":      d.get("Actors", ""),
+                }
+        except Exception:
+            pass
+        return {}
+
+    params = {"apikey": OMDB_KEY, "t": title, "type": "movie", "plot": "full"}
     if year:
         params["y"] = year
-    try:
-        r = requests.get("https://www.omdbapi.com/", params=params, timeout=6)
-        d = r.json()
-        result = {
-            "imdb_rating": d.get("imdbRating", ""),
-            "imdb_id":     d.get("imdbID", ""),
-            "poster_omdb": d.get("Poster", ""),
-            "plot":        d.get("Plot", ""),
-            "director":    d.get("Director", ""),
-            "actors":      d.get("Actors", ""),
-        } if d.get("Response") == "True" else {}
-    except Exception:
-        result = {}
+    result = _query(params)
+    # Retry without year for better foreign-title matching
+    if not result and year:
+        params2 = {k: v for k, v in params.items() if k != "y"}
+        result = _query(params2)
+
     omdb_cache[key] = result
     return result
 
@@ -166,14 +177,18 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
     # Also strip leftover parentheses artefacts
     clean_title = re.sub(r'\s*\(\s*\)\s*', '', clean_title).strip()
 
-    # ── poster (img immediately before or within h2's block) ──
+    # ── poster (img immediately before h2, only if it belongs to this film) ──
     poster = ""
     img = h2.find_previous("img")
     if img:
-        src = img.get("data-src") or img.get("src") or ""
-        if src and not src.startswith("data:"):
-            poster = src if src.startswith("http") else "https://allekinos.de" + src
-            poster = poster[:MAX_URL_LEN]
+        # Only use if no other h2 sits between this img and the current h2.
+        # find_next("h2") from the img must point to THIS h2, not a different one.
+        next_h2_from_img = img.find_next("h2")
+        if next_h2_from_img is h2:
+            src = img.get("data-src") or img.get("src") or ""
+            if src and not src.startswith("data:"):
+                poster = src if src.startswith("http") else "https://allekinos.de" + src
+                poster = poster[:MAX_URL_LEN]
 
     # ── metadata (pull from text near h2) ──
     meta_text = h2.get_text(" ", strip=True)
@@ -563,6 +578,8 @@ CALIGARI_URL    = ("https://booking.cinetixx.de/frontend/index.html"
 CALIGARI_CINEMA = "Caligari FilmBühne"
 CALIGARI_CITY   = "Wiesbaden"
 CT_DATE_RE      = re.compile(r'(?:Mo|Di|Mi|Do|Fr|Sa|So)\s+(\d{1,2})\.(\d{2})')
+CT_DATE_ONLY_RE = re.compile(r'^(?:Mo|Di|Mi|Do|Fr|Sa|So)\s+\d{1,2}\.\d{2}$')
+CT_TIME_ONLY_RE = re.compile(r'^(?:\d{1,2}:\d{2}|-)$')
 
 def parse_cinetixx_dates(text: str) -> list[str]:
     """Parse 14-date header row into ISO date list."""
@@ -579,6 +596,50 @@ def parse_cinetixx_dates(text: str) -> list[str]:
         except ValueError:
             pass
     return dates
+
+def _normalize_caligari_text(text: str) -> str:
+    """
+    Playwright inner_text() may render each date/time grid cell on its own line
+    instead of all 14 on a single line.  Join consecutive runs of pure date tokens
+    (e.g. "Sa 13.06") or pure time tokens (e.g. "20:00" / "-") into a single line
+    so the downstream parser can match them as a 14-token row.
+    """
+    raw_lines = text.split('\n')
+    result: list[str] = []
+    i = 0
+    while i < len(raw_lines):
+        stripped = raw_lines[i].strip()
+
+        # Accumulate consecutive individual date lines
+        if CT_DATE_ONLY_RE.match(stripped):
+            run: list[str] = []
+            while i < len(raw_lines) and CT_DATE_ONLY_RE.match(raw_lines[i].strip()):
+                run.append(raw_lines[i].strip())
+                i += 1
+            # Only join if it looks like a real date header (≥7 dates)
+            if len(run) >= 7:
+                result.append(' '.join(run))
+            else:
+                result.extend(run)
+            continue
+
+        # Accumulate consecutive individual time/dash lines
+        if stripped and CT_TIME_ONLY_RE.match(stripped):
+            run = []
+            while i < len(raw_lines) and raw_lines[i].strip() and CT_TIME_ONLY_RE.match(raw_lines[i].strip()):
+                run.append(raw_lines[i].strip())
+                i += 1
+            if len(run) >= 7:
+                result.append(' '.join(run))
+            else:
+                result.extend(run)
+            continue
+
+        result.append(raw_lines[i])
+        i += 1
+
+    return '\n'.join(result)
+
 
 def fetch_caligari_text() -> str:
     """Render the Caligari cinetixx page with Playwright and return body text."""
@@ -611,6 +672,10 @@ def parse_caligari(text: str) -> list[dict]:
     if dem_idx > 0:
         text = text[:dem_idx]
 
+    # Normalise: join per-line date/time tokens into single rows so the parser
+    # works regardless of whether Playwright rendered them inline or block-level.
+    text = _normalize_caligari_text(text)
+
     movies = []
 
     for block in text.split("FILMINFO"):
@@ -618,8 +683,8 @@ def parse_caligari(text: str) -> list[dict]:
         if not block:
             continue
 
-        # Split at every "Saal" occurrence – each starts a schedule section
-        parts = re.split(r'\nSaal\n', block)
+        # Split at "Saal" (allow surrounding whitespace / blank lines)
+        parts = re.split(r'\n\s*Saal\s*\n', block)
         if len(parts) < 2:
             continue
 
@@ -653,8 +718,8 @@ def parse_caligari(text: str) -> list[dict]:
 
             saal_lines = [l.strip() for l in saal.split("\n")]
 
-            # Find 14-date header row
-            dates = []
+            # Find date header row (≥7 date tokens on one line after normalisation)
+            dates: list[str] = []
             for line in saal_lines:
                 candidate = parse_cinetixx_dates(line)
                 if len(candidate) >= 7:
@@ -663,15 +728,17 @@ def parse_caligari(text: str) -> list[dict]:
             if not dates:
                 continue
 
-            # Find time rows: exactly 14 tokens of HH:MM or "-"
+            n = len(dates)
+
+            # Find time rows: exactly len(dates) tokens of HH:MM or "-"
             showtimes: list[dict] = []
             for line in saal_lines:
                 tokens = line.split()
-                if len(tokens) == 14 and all(
+                if len(tokens) == n and all(
                     re.match(r'^\d{1,2}:\d{2}$', t) or t == '-' for t in tokens
                 ):
                     for j, token in enumerate(tokens):
-                        if token != '-' and j < len(dates):
+                        if token != '-':
                             showtimes.append({
                                 "time": token,
                                 "date": dates[j],
@@ -774,6 +841,22 @@ def main():
         merge_kinopolis(output, murnau_movies, MURNAU_CITY, optional=False)
     except Exception as exc:
         print(f"  ✗ Fehler: {exc}")
+
+    # ── Remove Caligari entries from allekinos.de before Playwright scrape ────
+    # allekinos.de has no booking URLs for Caligari → all showtimes land on
+    # today's date (wrong).  Strip them so the Playwright data is authoritative.
+    if CALIGARI_CITY in output["cities"]:
+        for movie in output["cities"][CALIGARI_CITY]["movies"]:
+            movie["cinemas"] = [
+                c for c in movie["cinemas"]
+                if not (
+                    c["name"].startswith("Caligari") and
+                    all(not s.get("url") for s in c["showtimes"])
+                )
+            ]
+        output["cities"][CALIGARI_CITY]["movies"] = [
+            m for m in output["cities"][CALIGARI_CITY]["movies"] if m["cinemas"]
+        ]
 
     # ── Caligari FilmBühne (JS-rendered via Playwright) ───────────────────────
     print("\n=== Caligari FilmBühne (Wiesbaden) ===")

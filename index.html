@@ -712,7 +712,7 @@ function buildMovieCard(movie) {
   const hasImdb = movie.imdb_rating && movie.imdb_rating !== 'N/A' && movie.imdb_id;
   const imdbUrl = hasImdb ? `https://www.imdb.com/title/${escHtml(movie.imdb_id)}/?language=de` : '';
   const imdbLink = hasImdb
-    ? ` <a class="imdb-inline" href="${imdbUrl}" target="_blank"><span class="imdb-badge">IMDb</span> ${escHtml(movie.imdb_rating)}</a>`
+    ? ` <a class="imdb-inline" href="${imdbUrl}" target="_blank">(<span class="imdb-badge">IMDb</span> ${escHtml(movie.imdb_rating)})</a>`
     : '';
   const titleHtml = `${escHtml(movie.title)}${imdbLink}`;
 
