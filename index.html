@@ -123,6 +123,39 @@
   .chip:hover { border-color: var(--blue); color: var(--blue); }
   .chip.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 
+  /* ── Genre dropdown ── */
+  .genre-dropdown { position: relative; }
+  .genre-dropdown-btn { min-width: 90px; text-align: left; }
+  .genre-dropdown-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .genre-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    min-width: 180px;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 200;
+    padding: .35rem 0;
+  }
+  .genre-menu-item {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .38rem .75rem;
+    cursor: pointer;
+    font-size: .82rem;
+    color: var(--text);
+    transition: background .1s;
+    user-select: none;
+  }
+  .genre-menu-item:hover { background: var(--surface2); }
+  .genre-menu-item input[type=checkbox] { accent-color: var(--blue); width: 14px; height: 14px; flex-shrink: 0; }
+  .genre-menu-sep { height: 1px; background: var(--border); margin: .3rem 0; }
+
   /* ── Inline filter separators ── */
   .filter-inline-sep {
     width: 1px;
@@ -671,7 +704,12 @@
   </div>
   <div class="filter-section" id="filter-row">
     <span class="filter-label">Filter</span>
-    <div id="genre-chips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+    <div id="genre-dropdown" class="genre-dropdown">
+      <button id="genre-btn" class="chip genre-dropdown-btn" onclick="toggleGenreMenu(event)">
+        Genre ▾
+      </button>
+      <div id="genre-menu" class="genre-menu" style="display:none"></div>
+    </div>
     <span class="filter-inline-sep"></span>
     <span class="filter-inline-label">Bewertung</span>
     <input id="rating-slider" type="range" min="0" max="9" step="0.5" value="0"
@@ -775,36 +813,76 @@ function openTrailer(title) {
   window.open(url, '_blank', 'noopener');
 }
 
-// ── Genre filter ───────────────────────────────────────────────────────────
+// ── Genre dropdown ─────────────────────────────────────────────────────────
+let _genreList = [];   // populated on first data load
+
+function toggleGenreMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('genre-menu');
+  const open = menu.style.display !== 'none';
+  closeGenreMenu();
+  if (!open) {
+    buildGenreMenu();
+    menu.style.display = 'block';
+  }
+}
+function closeGenreMenu() {
+  const menu = document.getElementById('genre-menu');
+  if (menu) menu.style.display = 'none';
+}
+// Close when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#genre-dropdown')) closeGenreMenu();
+});
+
+function buildGenreMenu() {
+  const menu = document.getElementById('genre-menu');
+  menu.innerHTML = '';
+
+  // "Alle zurücksetzen" entry
+  const reset = document.createElement('div');
+  reset.className = 'genre-menu-item';
+  reset.innerHTML = '<input type="checkbox" ' + (!state.activeGenres.size ? 'checked' : '') + '> Alle';
+  reset.onclick = e => { e.stopPropagation(); state.activeGenres.clear(); renderAll(); buildGenreMenu(); };
+  menu.appendChild(reset);
+
+  const sep = document.createElement('div');
+  sep.className = 'genre-menu-sep';
+  menu.appendChild(sep);
+
+  for (const g of _genreList) {
+    const item = document.createElement('div');
+    item.className = 'genre-menu-item';
+    const checked = state.activeGenres.has(g);
+    item.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''}> ${escHtml(g)}`;
+    item.onclick = e => {
+      e.stopPropagation();
+      if (state.activeGenres.has(g)) state.activeGenres.delete(g);
+      else state.activeGenres.add(g);
+      renderAll();
+      buildGenreMenu();   // re-render checkboxes in-place
+    };
+    menu.appendChild(item);
+  }
+}
+
 function renderGenreChips() {
   if (!state.data) return;
-  // Collect all genres across all cities
+  // Rebuild genre list from current data
   const allGenres = new Set();
   for (const cd of Object.values(state.data.cities)) {
     for (const m of (cd.movies || [])) {
       for (const g of (m.genres || [])) if (g) allGenres.add(g);
     }
   }
-  const genres = [...allGenres].sort();
-  const el  = document.getElementById('genre-chips');
-  el.innerHTML = '';
-  if (!genres.length) return;
-  const alleBtn = document.createElement('button');
-  alleBtn.className = 'chip' + (!state.activeGenres.size ? ' active' : '');
-  alleBtn.textContent = 'Alle';
-  alleBtn.onclick = () => { state.activeGenres.clear(); renderAll(); };
-  el.appendChild(alleBtn);
-  for (const g of genres) {
-    const btn = document.createElement('button');
-    btn.className = 'chip' + (state.activeGenres.has(g) ? ' active' : '');
-    btn.textContent = g;
-    btn.onclick = () => {
-      if (state.activeGenres.has(g)) state.activeGenres.delete(g);
-      else state.activeGenres.add(g);
-      renderAll();
-    };
-    el.appendChild(btn);
-  }
+  _genreList = [...allGenres].sort();
+
+  // Update button label
+  const btn = document.getElementById('genre-btn');
+  if (!btn) return;
+  const n = state.activeGenres.size;
+  btn.textContent = n === 0 ? 'Genre ▾' : `Genre (${n}) ▾`;
+  btn.classList.toggle('active', n > 0);
 }
 
 
