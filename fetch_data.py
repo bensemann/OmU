@@ -457,6 +457,255 @@ def merge_kinopolis(output: dict, kp_movies: list[dict], city_name: str, optiona
                         ex_cinema["showtimes"].append(st)
                         existing_keys.add((st["date"], st["time"]))
 
+# ── Murnau-Filmtheater scraper (server-rendered Drupal Views) ─────────────────
+
+MURNAU_URL      = "https://www.murnau-stiftung.de/index.php/filmtheater/kinoprogramm"
+MURNAU_CINEMA   = "Murnau-Filmtheater"
+MURNAU_CITY     = "Wiesbaden"
+MURNAU_DATE_RE  = re.compile(r'\w+\s+(\d{1,2})\.(\d{1,2})\.(\d{4})')
+MURNAU_WINDOW   = 60   # days ahead to include
+
+def parse_murnau_date(text: str) -> str | None:
+    m = MURNAU_DATE_RE.search(text)
+    if not m:
+        return None
+    day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return datetime(year, month, day).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+def fetch_parse_murnau() -> list[dict]:
+    """Fetch Murnau-Filmtheater program and return OmU movies."""
+    try:
+        r = requests.get(MURNAU_URL, headers=HEADERS, timeout=25)
+        r.raise_for_status()
+    except Exception as exc:
+        print(f"  ✗ Murnau Fehler: {exc}")
+        return []
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    cutoff = (datetime.now() + timedelta(days=MURNAU_WINDOW)).strftime("%Y-%m-%d")
+
+    # Group showtimes by clean title
+    title_showtimes: dict[str, list[dict]] = {}
+
+    for row in soup.select(".views-row"):
+        date_el   = row.select_one(".views-field-field-cinema-show-date")
+        time_el   = row.select_one(".views-field-field-cinema-show-date-1")
+        title_el  = row.select_one(".views-field-field-cinema-show-movie")
+        ticket_el = row.select_one(".views-field-field-dd-cinema-show-ticket")
+
+        if not (date_el and time_el and title_el):
+            continue
+
+        title_text = title_el.get_text(strip=True)
+        if "(OMU)" not in title_text.upper():
+            continue
+
+        date_str = parse_murnau_date(date_el.get_text(strip=True))
+        time_m   = re.search(r'(\d{1,2}:\d{2})', time_el.get_text(strip=True))
+        if not date_str or not time_m:
+            continue
+        if date_str > cutoff:
+            continue
+
+        time_str = time_m.group(1)
+
+        ticket_url = ""
+        if ticket_el:
+            a = ticket_el.find("a")
+            if a:
+                href = a.get("href", "")
+                if href and not href.startswith("http"):
+                    href = "https://www.murnau-stiftung.de" + href
+                ticket_url = clean_url(href)
+
+        # Strip OmU suffix (handles "(OmU)" / "(OMU)") from end of title
+        clean_t = re.sub(r'\s*\(OmU\)\s*$', '', title_text, flags=re.IGNORECASE).strip()
+
+        if clean_t not in title_showtimes:
+            title_showtimes[clean_t] = []
+        title_showtimes[clean_t].append({
+            "time": time_str, "date": date_str, "url": ticket_url
+        })
+
+    movies = []
+    for title, showtimes in title_showtimes.items():
+        omdb = get_omdb(title, None)
+        movies.append({
+            "title":       title,
+            "version":     "OmU",
+            "genres":      [],
+            "year":        None,
+            "runtime":     None,
+            "fsk":         None,
+            "poster":      omdb.get("poster_omdb", ""),
+            "imdb_rating": omdb.get("imdb_rating", ""),
+            "imdb_id":     omdb.get("imdb_id", ""),
+            "plot":        omdb.get("plot", ""),
+            "director":    omdb.get("director", ""),
+            "actors":      omdb.get("actors", ""),
+            "cinemas": [{
+                "name":      MURNAU_CINEMA,
+                "address":   "Murnaustraße 6",
+                "city":      MURNAU_CITY,
+                "showtimes": showtimes,
+            }],
+        })
+    return movies
+
+
+# ── Caligari scraper (Playwright – JS-rendered cinetixx Angular app) ──────────
+
+CALIGARI_URL    = ("https://booking.cinetixx.de/frontend/index.html"
+                   "?cinemaId=2079319745&bgswitch=false&resize=false#/program/2079319745")
+CALIGARI_CINEMA = "Caligari FilmBühne"
+CALIGARI_CITY   = "Wiesbaden"
+CT_DATE_RE      = re.compile(r'(?:Mo|Di|Mi|Do|Fr|Sa|So)\s+(\d{1,2})\.(\d{2})')
+
+def parse_cinetixx_dates(text: str) -> list[str]:
+    """Parse 14-date header row into ISO date list."""
+    now = datetime.now()
+    dates = []
+    for m in CT_DATE_RE.finditer(text):
+        day, month = int(m.group(1)), int(m.group(2))
+        year = now.year
+        try:
+            d = datetime(year, month, day)
+            if (now - d).days > 30:
+                d = datetime(year + 1, month, day)
+            dates.append(d.strftime("%Y-%m-%d"))
+        except ValueError:
+            pass
+    return dates
+
+def fetch_caligari_text() -> str:
+    """Render the Caligari cinetixx page with Playwright and return body text."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("  ⚠ playwright not installed – Caligari übersprungen")
+        return ""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            page.goto(CALIGARI_URL, wait_until="networkidle", timeout=45_000)
+            page.wait_for_selector("text=FILMINFO", timeout=20_000)
+            text = page.inner_text("body")
+        except Exception as exc:
+            print(f"  ⚠ Caligari Ladefehler: {exc}")
+            text = ""
+        finally:
+            browser.close()
+    return text
+
+def parse_caligari(text: str) -> list[dict]:
+    """Parse the plain text of the rendered Caligari program page."""
+    if not text:
+        return []
+
+    # Drop upcoming section
+    dem_idx = text.find("Demnächst in Caligari")
+    if dem_idx > 0:
+        text = text[:dem_idx]
+
+    movies = []
+
+    for block in text.split("FILMINFO"):
+        block = block.strip()
+        if not block:
+            continue
+
+        # Split at every "Saal" occurrence – each starts a schedule section
+        parts = re.split(r'\nSaal\n', block)
+        if len(parts) < 2:
+            continue
+
+        # Film metadata from preamble (first part)
+        preamble = parts[0]
+        runtime = None
+        rm = re.search(r'Länge:\s*(\d+)\s*min', preamble)
+        if rm:
+            runtime = int(rm.group(1))
+        gm = re.search(r'Genre:\s*([^\n]+)', preamble)
+        genres = [g.strip() for g in gm.group(1).split(",")] if gm else []
+        genres = [g for g in genres if g and g != '-']
+        year_m = re.search(r'\b(20\d{2})\b', preamble)
+        year = year_m.group(1) if year_m else None
+
+        # Each Saal section (parts[1], parts[2], …)
+        for i, saal in enumerate(parts[1:], 1):
+            # OmU title = last line containing "(OmU)" in the preceding part
+            prev_lines = [l.strip() for l in parts[i-1].split("\n") if l.strip()]
+            title_line = next(
+                (l for l in reversed(prev_lines) if "(OmU)" in l or "(OV)" in l),
+                None
+            )
+            if not title_line or "(OmU)" not in title_line:
+                continue
+
+            title = re.sub(r'\s*\(OmU[^)]*\)\s*', '', title_line).strip()
+            title = re.sub(r'\s*\(\d{2}\.\d{2}\.\d{4}\)\s*', '', title).strip()
+            if not title:
+                continue
+
+            saal_lines = [l.strip() for l in saal.split("\n")]
+
+            # Find 14-date header row
+            dates = []
+            for line in saal_lines:
+                candidate = parse_cinetixx_dates(line)
+                if len(candidate) >= 7:
+                    dates = candidate
+                    break
+            if not dates:
+                continue
+
+            # Find time rows: exactly 14 tokens of HH:MM or "-"
+            showtimes: list[dict] = []
+            for line in saal_lines:
+                tokens = line.split()
+                if len(tokens) == 14 and all(
+                    re.match(r'^\d{1,2}:\d{2}$', t) or t == '-' for t in tokens
+                ):
+                    for j, token in enumerate(tokens):
+                        if token != '-' and j < len(dates):
+                            showtimes.append({
+                                "time": token,
+                                "date": dates[j],
+                                "url":  "",
+                            })
+
+            if not showtimes:
+                continue
+
+            omdb = get_omdb(title, year)
+            movies.append({
+                "title":       title,
+                "version":     "OmU",
+                "genres":      genres[:5],
+                "year":        year,
+                "runtime":     runtime,
+                "fsk":         None,
+                "poster":      omdb.get("poster_omdb", ""),
+                "imdb_rating": omdb.get("imdb_rating", ""),
+                "imdb_id":     omdb.get("imdb_id", ""),
+                "plot":        omdb.get("plot", ""),
+                "director":    omdb.get("director", ""),
+                "actors":      omdb.get("actors", ""),
+                "cinemas": [{
+                    "name":      CALIGARI_CINEMA,
+                    "address":   "Marktplatz 9",
+                    "city":      CALIGARI_CITY,
+                    "showtimes": showtimes,
+                }],
+            })
+
+    return movies
+
+
 # ── City scraper ──────────────────────────────────────────────────────────────
 
 def fetch_city(slug: str) -> str:
@@ -516,6 +765,25 @@ def main():
             merge_kinopolis(output, kp_movies, city_name, optional)
         except Exception as exc:
             print(f"    ✗ Fehler: {exc}")
+
+    # ── Murnau-Filmtheater ────────────────────────────────────────────────────
+    print("\n=== Murnau-Filmtheater (Wiesbaden) ===")
+    try:
+        murnau_movies = fetch_parse_murnau()
+        print(f"  → {len(murnau_movies)} OmU-Film(e)")
+        merge_kinopolis(output, murnau_movies, MURNAU_CITY, optional=False)
+    except Exception as exc:
+        print(f"  ✗ Fehler: {exc}")
+
+    # ── Caligari FilmBühne (JS-rendered via Playwright) ───────────────────────
+    print("\n=== Caligari FilmBühne (Wiesbaden) ===")
+    try:
+        caligari_text   = fetch_caligari_text()
+        caligari_movies = parse_caligari(caligari_text)
+        print(f"  → {len(caligari_movies)} OmU-Film(e)")
+        merge_kinopolis(output, caligari_movies, CALIGARI_CITY, optional=False)
+    except Exception as exc:
+        print(f"  ✗ Fehler: {exc}")
 
     # Safety check
     raw = json.dumps(output, ensure_ascii=False)
