@@ -112,14 +112,53 @@ def get_omdb(title: str, year: str | None = None) -> dict:
             pass
         return {}
 
-    params = {"apikey": OMDB_KEY, "t": title, "type": "movie", "plot": "full"}
+    def _query_by_id(imdb_id: str) -> dict:
+        return _query({"apikey": OMDB_KEY, "i": imdb_id, "type": "movie", "plot": "full"})
+
+    base = {"apikey": OMDB_KEY, "t": title, "type": "movie", "plot": "full"}
+
+    # 1) Exact title + year
+    params = {**base}
     if year:
         params["y"] = year
     result = _query(params)
-    # Retry without year for better foreign-title matching
+
+    # 2) Exact title without year
     if not result and year:
-        params2 = {k: v for k, v in params.items() if k != "y"}
-        result = _query(params2)
+        result = _query(base)
+
+    # 3) Simplified title (strip subtitle after " – " / " - " / ": ")
+    short_title = re.split(r'\s+[–—-]\s+|\s*:\s+', title, maxsplit=1)[0].strip()
+    if not result and short_title != title:
+        p3 = {**base, "t": short_title}
+        if year:
+            p3["y"] = year
+        result = _query(p3)
+        if not result and year:
+            result = _query({**base, "t": short_title})
+
+    # 4) OMDb search mode (s=) as last resort → take first hit, then fetch by imdbID
+    if not result:
+        search_title = short_title if short_title != title else title
+        try:
+            sp = {"apikey": OMDB_KEY, "s": search_title, "type": "movie"}
+            if year:
+                sp["y"] = year
+            sr = requests.get("https://www.omdbapi.com/", params=sp, timeout=6)
+            sd = sr.json()
+            hits = sd.get("Search", [])
+            if hits:
+                result = _query_by_id(hits[0]["imdbID"])
+            elif year:
+                # Retry search without year
+                sp2 = {k: v for k, v in sp.items() if k != "y"}
+                sr2 = requests.get("https://www.omdbapi.com/", params=sp2, timeout=6)
+                sd2 = sr2.json()
+                hits2 = sd2.get("Search", [])
+                if hits2:
+                    result = _query_by_id(hits2[0]["imdbID"])
+        except Exception:
+            pass
 
     omdb_cache[key] = result
     return result
@@ -224,6 +263,36 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         if len(genres) >= 5:
             break
 
+    # ── description from allekinos.de page ──────────────────────────────────
+    # allekinos.de includes a short plot paragraph after the genre/year line and
+    # before the cinema blocks.  Extract it as a fallback when OMDb has nothing.
+    ak_description = ""
+    for elem in h2.next_elements:
+        if elem is next_h2:
+            break
+        if hasattr(elem, "name") and elem.name == "h2" and elem is not h2:
+            break
+        # Stop at the cinema section (first kino= link)
+        if hasattr(elem, "name") and elem.name == "a":
+            if "kino=" in (elem.get("href") or ""):
+                break
+        if hasattr(elem, "name") and elem.name in ("p", "div", "span"):
+            text = elem.get_text(" ", strip=True)
+            # Substantial text that doesn't look like pure metadata
+            if (len(text) > 60 and
+                    not re.match(r'^\d{4}|^FSK|^\d+ Std', text) and
+                    "://" not in text and
+                    "kino=" not in text):
+                # Exclude if it's mostly link text (genre tags etc.)
+                links = elem.find_all("a") if hasattr(elem, "find_all") else []
+                link_text = " ".join(a.get_text() for a in links)
+                non_link = text
+                for lt in link_text.split():
+                    non_link = non_link.replace(lt, "", 1)
+                if len(non_link.strip()) > 60:
+                    ak_description = text[:500]
+                    break
+
     # ── cinemas & showtimes ──────────────────────────────────────────────────
     #
     # Walk next_elements from h2 to next_h2.
@@ -316,7 +385,8 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         "poster":      poster or omdb.get("poster_omdb", ""),
         "imdb_rating": omdb.get("imdb_rating", ""),
         "imdb_id":     omdb.get("imdb_id", ""),
-        "plot":        omdb.get("plot", ""),
+        # Prefer OMDb full plot; fall back to allekinos.de excerpt
+        "plot":        omdb.get("plot", "") or ak_description,
         "director":    omdb.get("director", ""),
         "actors":      omdb.get("actors", ""),
         "cinemas":     cinemas,
@@ -361,11 +431,13 @@ def parse_kinopolis_page(html: str, cinema_name: str, city_name: str) -> list[di
         # Strip alternate original title: "German Title / ORIGINAL TITLE"
         title = re.split(r'\s*/\s*', raw_title)[0].strip()
 
-        # Poster from kinopolis CDN
+        # Poster from kinopolis CDN (check data-src for lazy-loaded images)
         poster = ""
-        img = section.find("img", src=re.compile(r"plakate_"))
-        if img:
-            poster = img.get("src", "")[:MAX_URL_LEN]
+        for img in section.find_all("img"):
+            src = img.get("data-src") or img.get("src") or ""
+            if "plakate_" in src:
+                poster = src[:MAX_URL_LEN]
+                break
 
         # Dates (.prog-nav__link) align 1:1 with day wrappers (.prog-day__wrapper)
         nav_links   = section.select(".prog-nav__link")
@@ -843,16 +915,16 @@ def main():
         print(f"  ✗ Fehler: {exc}")
 
     # ── Remove Caligari entries from allekinos.de before Playwright scrape ────
-    # allekinos.de has no booking URLs for Caligari → all showtimes land on
-    # today's date (wrong).  Strip them so the Playwright data is authoritative.
+    # allekinos.de Caligari entries use sequential-fallback date assignment which
+    # is unreliable (assigns today's date to all linked showtimes).  The cinema
+    # name also differs ("Caligari FilmBühne Wiesbaden" vs "Caligari FilmBühne"),
+    # so without removal both would appear as duplicate cinema entries.
+    # Strip them unconditionally; the Playwright scraper is the authoritative source.
     if CALIGARI_CITY in output["cities"]:
         for movie in output["cities"][CALIGARI_CITY]["movies"]:
             movie["cinemas"] = [
                 c for c in movie["cinemas"]
-                if not (
-                    c["name"].startswith("Caligari") and
-                    all(not s.get("url") for s in c["showtimes"])
-                )
+                if "Caligari" not in c["name"]
             ]
         output["cities"][CALIGARI_CITY]["movies"] = [
             m for m in output["cities"][CALIGARI_CITY]["movies"] if m["cinemas"]
