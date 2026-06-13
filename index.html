@@ -210,30 +210,35 @@
     color: var(--blue);
     opacity: .4;
   }
-  /* Film-Info-Overlay – deckt gesamte Karte ab */
+  /* Film-Info-Overlay – deckt gesamte Karte ab, erscheint beim Poster-Hover */
   .poster-tip {
     position: absolute;
     inset: 0;
     z-index: 5;
-    background: rgba(10,20,40,.93);
+    background: rgba(12, 22, 46, 0.84);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     color: #e2e8f0;
     font-size: .82rem;
     line-height: 1.55;
-    padding: 1rem 1.1rem;
+    padding: 1rem 1.2rem;
     overflow-y: auto;
     opacity: 0;
     pointer-events: none;
-    transition: opacity .2s;
-    cursor: pointer;
+    transition: opacity .18s ease;
+    border-radius: var(--radius);
+    cursor: default;
   }
-  /* Tap/Klick auf Poster öffnet Overlay */
+  /* Tap/Klick auf Poster öffnet Overlay (Mobil) */
   .movie-card.tip-open .poster-tip {
     opacity: 1;
     pointer-events: auto;
   }
-  /* Hover auf Desktop (nur Geräte mit echter Maus) */
+  /* Desktop: Hover auf Poster-Spalte zeigt Overlay.
+     .poster-tip:hover hält es sichtbar wenn die Maus drüber wandert. */
   @media (hover: hover) {
-    .movie-card:hover .poster-tip {
+    .poster-col:hover ~ .poster-tip,
+    .poster-tip:hover {
       opacity: 1;
       pointer-events: auto;
     }
@@ -258,6 +263,8 @@
     margin-top: .4rem;
   }
   .poster-tip .tip-val { color: #e2e8f0; }
+  /* Schließen-Hinweis nur auf Touch-Geräten zeigen */
+  @media (hover: hover) { .tip-hint-touch { display: none; } }
   .poster-tip .tip-hint {
     margin-top: .7rem;
     font-size: .68rem;
@@ -876,7 +883,7 @@ function buildMovieCard(movie) {
         ${hasImdb ? `<a href="${imdbUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:.75rem;color:#f5c518;font-weight:700;text-decoration:none">⭐ IMDb ${escHtml(movie.imdb_rating)}</a>` : ''}
         ${hasTmdb ? `<a href="${tmdbUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:.75rem;color:#01b4e4;font-weight:700;text-decoration:none">⭐ TMDb ${escHtml(movie.tmdb_rating)}</a>` : ''}
       </div>
-      <p class="tip-hint">Klicken zum Schließen</p>
+      <p class="tip-hint tip-hint-touch">Tippen zum Schließen</p>
     </div>`;
 
   const posterHtml = movie.poster

@@ -9,7 +9,7 @@ Also scrapes kinopolis.de wochenübersicht pages for next-week data.
 import requests
 from bs4 import BeautifulSoup
 import json, re, os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -160,38 +160,102 @@ def get_tmdb(title: str, year: str | None = None) -> dict:
     if key in tmdb_cache:
         return tmdb_cache[key]
 
-    def _search(query: str, y: str | None) -> dict:
-        params: dict = {
-            "api_key": TMDB_KEY,
-            "query":   query,
-            "language": "de",
-        }
-        if y:
-            params["year"] = y
+    now_year = datetime.now().year
+
+    def _search_all(query: str) -> list[dict]:
+        """Return all TMDb results for a query (no year filter – we do that ourselves)."""
+        params: dict = {"api_key": TMDB_KEY, "query": query}
         try:
             r = requests.get(
                 "https://api.themoviedb.org/3/search/movie",
                 params=params, timeout=8,
             )
-            results = r.json().get("results", [])
-            if not results and y:
-                # Retry without year restriction
-                params2 = {k: v for k, v in params.items() if k != "year"}
-                r2 = requests.get(
-                    "https://api.themoviedb.org/3/search/movie",
-                    params=params2, timeout=8,
-                )
-                results = r2.json().get("results", [])
-            return results[0] if results else {}
+            return r.json().get("results", [])
         except Exception:
-            return {}
+            return []
 
-    hit = _search(title, year)
-    # Try simplified title if no hit (strip subtitle)
+    def _year_score(hit: dict) -> int:
+        """
+        Score a TMDb result by year plausibility.
+        Films currently in German cinemas are almost always ≤ 3 years old.
+        If the caller supplied a known year (from the scraped page), use that;
+        otherwise apply a recency window.
+
+        Returns:
+          3  – strong match (within ±1 of known year, or released ≤ 2 years ago)
+          1  – acceptable  (within ±3, or released 3–4 years ago)
+         -1  – weak        (older but plausible)
+        -99  – implausible (e.g. a 2005 film when we know year=2025)
+        """
+        release = (hit.get("release_date") or "")[:4]
+        if not release or not release.isdigit():
+            return 0  # no date → neutral
+        hy = int(release)
+        if year:
+            ky = int(year)
+            diff = abs(hy - ky)
+            if diff <= 1: return 3
+            if diff <= 3: return 1
+            return -99           # year mismatch → almost certainly wrong film
+        else:
+            # No known year: cinema programmes show mostly recent releases
+            age = now_year - hy
+            if age <= 2:  return 3
+            if age <= 4:  return 1
+            if age <= 10: return -1
+            return -99           # very old film unlikely without year confirmation
+
+    def _best(results: list[dict]) -> dict:
+        """Pick the highest-scoring result; return {} if best score is implausible."""
+        if not results:
+            return {}
+        scored = sorted(results, key=_year_score, reverse=True)
+        best = scored[0]
+        if _year_score(best) <= -99:
+            return {}   # refuse to return an implausible match
+        return best
+
+    def _title_variants(t: str) -> list[str]:
+        """
+        Return title search candidates in priority order:
+        1. Exact title as given
+        2. Content in parentheses  ← "VERFLUCHT NORMAL (I swear)" → "I swear"
+        3. Title without parenthetical content
+        4. Title without subtitle after " – " / " - " / ": "
+        Duplicates are silently skipped.
+        """
+        seen: set[str] = set()
+        out: list[str] = []
+        def add(s: str) -> None:
+            s = s.strip()
+            if s and s not in seen:
+                seen.add(s); out.append(s)
+        add(t)
+        for m in re.finditer(r'\(([^)]{2,})\)', t):
+            add(m.group(1))
+        no_paren = re.sub(r'\s*\([^)]*\)', '', t).strip()
+        add(no_paren)
+        add(re.split(r'\s+[–—-]\s+|\s*:\s+', no_paren, maxsplit=1)[0])
+        return out
+
+    hit: dict = {}
+    newest_fallback: dict = {}   # most recent result seen across all variants
+
+    for variant in _title_variants(title):
+        candidates = _search_all(variant)
+        if candidates and not newest_fallback:
+            # Keep the most recently released result as a last-resort fallback
+            newest_fallback = max(
+                candidates,
+                key=lambda h: h.get("release_date") or "",
+            )
+        hit = _best(candidates)
+        if hit:
+            break
+
+    # If no plausible hit found after all variants, use the most recent result
     if not hit:
-        short = re.split(r'\s+[–—-]\s+|\s*:\s+', title, maxsplit=1)[0].strip()
-        if short != title:
-            hit = _search(short, year)
+        hit = newest_fallback
 
     if not hit:
         tmdb_cache[key] = {}
@@ -981,7 +1045,7 @@ def parse_city(html: str, city_name: str) -> list[dict]:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    output = {"generated_at": datetime.now().isoformat(), "cities": {}}
+    output = {"generated_at": datetime.now(timezone.utc).isoformat(), "cities": {}}
 
     for cfg in CITIES:
         name, slug = cfg["name"], cfg["slug"]
