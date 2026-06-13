@@ -20,7 +20,7 @@ CITIES = [
     {"name": "Frankfurt am Main", "slug": "Frankfurt am Main", "optional": True},
     {"name": "Darmstadt",         "slug": "Darmstadt",         "optional": True},
     {"name": "Sulzbach (Taunus)", "slug": "Sulzbach (Taunus)", "optional": True},
-    {"name": "Gießen",           "slug": "Gießen",           "optional": True},
+    # Gießen entfernt – keine OmU-Vorstellungen
 ]
 
 OMDB_KEY  = os.environ.get("OMDB_API_KEY", "")
@@ -893,8 +893,22 @@ def fetch_caligari_text() -> str:
         page = browser.new_page()
         try:
             page.goto(CALIGARI_URL, wait_until="networkidle", timeout=45_000)
-            page.wait_for_selector("text=FILMINFO", timeout=20_000)
+            # Try multiple wait strategies: cinetixx may show "FILMINFO" or just film titles
+            try:
+                page.wait_for_selector("text=FILMINFO", timeout=15_000)
+                print("  ✓ 'FILMINFO' text found")
+            except Exception:
+                # Fallback: wait for any program content (film rows, time slots)
+                try:
+                    page.wait_for_selector(".movie-list, .program-list, .film-row, table", timeout=10_000)
+                    print("  ✓ Program table/list found")
+                except Exception:
+                    print("  ⚠ Neither FILMINFO nor program table found, using whatever loaded")
             text = page.inner_text("body")
+            print(f"  ℹ Page text length: {len(text)} chars")
+            # Log first 300 chars to help debug
+            preview = text[:300].replace('\n', ' | ')
+            print(f"  ℹ Preview: {preview}")
         except Exception as exc:
             print(f"  ⚠ Caligari Ladefehler: {exc}")
             text = ""
@@ -1084,31 +1098,35 @@ def main():
     except Exception as exc:
         print(f"  ✗ Fehler: {exc}")
 
-    # ── Remove Caligari entries from allekinos.de before Playwright scrape ────
-    # allekinos.de Caligari entries use sequential-fallback date assignment which
-    # is unreliable (assigns today's date to all linked showtimes).  The cinema
-    # name also differs ("Caligari FilmBühne Wiesbaden" vs "Caligari FilmBühne"),
-    # so without removal both would appear as duplicate cinema entries.
-    # Strip them unconditionally; the Playwright scraper is the authoritative source.
-    if CALIGARI_CITY in output["cities"]:
-        for movie in output["cities"][CALIGARI_CITY]["movies"]:
-            movie["cinemas"] = [
-                c for c in movie["cinemas"]
-                if "Caligari" not in c["name"]
-            ]
-        output["cities"][CALIGARI_CITY]["movies"] = [
-            m for m in output["cities"][CALIGARI_CITY]["movies"] if m["cinemas"]
-        ]
-
-    # ── Caligari FilmBühne (JS-rendered via Playwright) ───────────────────────
+    # ── Caligari FilmBühne (JS-rendered via Playwright, allekinos.de as fallback) ──
+    # Strategy: run Playwright first.  If it returns films, remove the unreliable
+    # allekinos.de Caligari entries (wrong dates, duplicate cinema name) and use
+    # Playwright data.  If Playwright returns nothing, keep allekinos.de as fallback.
     print("\n=== Caligari FilmBühne (Wiesbaden) ===")
+    caligari_movies = []
     try:
         caligari_text   = fetch_caligari_text()
         caligari_movies = parse_caligari(caligari_text)
-        print(f"  → {len(caligari_movies)} OmU-Film(e)")
-        merge_kinopolis(output, caligari_movies, CALIGARI_CITY, optional=False)
+        print(f"  → {len(caligari_movies)} OmU-Film(e) via Playwright")
     except Exception as exc:
-        print(f"  ✗ Fehler: {exc}")
+        print(f"  ✗ Playwright-Fehler: {exc}")
+
+    if caligari_movies:
+        # Playwright worked: remove duplicate allekinos.de Caligari entries
+        if CALIGARI_CITY in output["cities"]:
+            for movie in output["cities"][CALIGARI_CITY]["movies"]:
+                movie["cinemas"] = [
+                    c for c in movie["cinemas"]
+                    if "Caligari" not in c["name"]
+                ]
+            output["cities"][CALIGARI_CITY]["movies"] = [
+                m for m in output["cities"][CALIGARI_CITY]["movies"] if m["cinemas"]
+            ]
+        merge_kinopolis(output, caligari_movies, CALIGARI_CITY, optional=False)
+    else:
+        # Playwright failed or timed out: keep allekinos.de Caligari data as fallback.
+        # Dates may be imprecise but at least films are visible.
+        print("  ⚠ Playwright lieferte keine Filme – allekinos.de-Daten als Fallback behalten")
 
     # Safety check
     raw = json.dumps(output, ensure_ascii=False)
