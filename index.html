@@ -231,6 +231,13 @@
     opacity: 1;
     pointer-events: auto;
   }
+  /* Hover auf Desktop (nur Geräte mit echter Maus) */
+  @media (hover: hover) {
+    .movie-card:hover .poster-tip {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
   .poster-tip .tip-title {
     font-size: .9rem;
     font-weight: 700;
@@ -793,7 +800,14 @@ function buildMovieCard(movie) {
   const imdbLink = hasImdb
     ? ` <a class="imdb-inline" href="${imdbUrl}" target="_blank">(<span class="imdb-badge">IMDb</span> ${escHtml(movie.imdb_rating)})</a>`
     : '';
-  const titleHtml = `${escHtml(movie.title)}${imdbLink}`;
+
+  const hasTmdb = movie.tmdb_rating && movie.tmdb_rating !== '0.0' && movie.tmdb_id;
+  const tmdbUrl  = hasTmdb ? `https://www.themoviedb.org/movie/${escHtml(movie.tmdb_id)}` : '';
+  const tmdbLink = hasTmdb
+    ? ` <a class="imdb-inline" href="${tmdbUrl}" target="_blank">(<span class="imdb-badge" style="background:#01b4e4;color:#fff">TMDb</span> ${escHtml(movie.tmdb_rating)})</a>`
+    : '';
+
+  const titleHtml = `${escHtml(movie.title)}${imdbLink}${tmdbLink}`;
 
   const trailerUrl  = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + ' Trailer')}`;
   const trailerHtml = `<a class="trailer-badge" href="${trailerUrl}" target="_blank">▶ Trailer</a>`;
@@ -858,6 +872,10 @@ function buildMovieCard(movie) {
         : (fallbackInfo ? `<p class="tip-plot">${escHtml(fallbackInfo)}</p>` : '')}
       ${movie.director ? `<span class="tip-label">Regie</span><span class="tip-val">${escHtml(movie.director)}</span>` : ''}
       ${movie.actors   ? `<span class="tip-label">Darsteller</span><span class="tip-val">${escHtml(movie.actors.split(',').slice(0,3).join(', '))}</span>` : ''}
+      <div style="margin-top:.5rem;display:flex;gap:.5rem;flex-wrap:wrap">
+        ${hasImdb ? `<a href="${imdbUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:.75rem;color:#f5c518;font-weight:700;text-decoration:none">⭐ IMDb ${escHtml(movie.imdb_rating)}</a>` : ''}
+        ${hasTmdb ? `<a href="${tmdbUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:.75rem;color:#01b4e4;font-weight:700;text-decoration:none">⭐ TMDb ${escHtml(movie.tmdb_rating)}</a>` : ''}
+      </div>
       <p class="tip-hint">Klicken zum Schließen</p>
     </div>`;
 

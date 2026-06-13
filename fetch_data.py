@@ -24,6 +24,8 @@ CITIES = [
 ]
 
 OMDB_KEY  = os.environ.get("OMDB_API_KEY", "")
+TMDB_KEY  = os.environ.get("TMDB_API_KEY", "")
+TMDB_IMG  = "https://image.tmdb.org/t/p/w500"
 BASE_URL  = "https://allekinos.de/programm"
 HEADERS   = {"User-Agent": (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -42,6 +44,7 @@ TIME_RE       = re.compile(r'^\d{1,2}:\d{2}$')
 MULTI_TIME_RE = re.compile(r'\d{1,2}:\d{2}')   # extract from concatenated strings
 VERSION_RE    = re.compile(r'\s*\(OmU\)\s*', re.IGNORECASE)
 omdb_cache: dict = {}
+tmdb_cache: dict = {}
 
 # ── Kinopolis config ───────────────────────────────────────────────────────────
 
@@ -137,31 +140,126 @@ def get_omdb(title: str, year: str | None = None) -> dict:
         if not result and year:
             result = _query({**base, "t": short_title})
 
-    # 4) OMDb search mode (s=) as last resort → take first hit, then fetch by imdbID
-    if not result:
-        search_title = short_title if short_title != title else title
-        try:
-            sp = {"apikey": OMDB_KEY, "s": search_title, "type": "movie"}
-            if year:
-                sp["y"] = year
-            sr = requests.get("https://www.omdbapi.com/", params=sp, timeout=6)
-            sd = sr.json()
-            hits = sd.get("Search", [])
-            if hits:
-                result = _query_by_id(hits[0]["imdbID"])
-            elif year:
-                # Retry search without year
-                sp2 = {k: v for k, v in sp.items() if k != "y"}
-                sr2 = requests.get("https://www.omdbapi.com/", params=sp2, timeout=6)
-                sd2 = sr2.json()
-                hits2 = sd2.get("Search", [])
-                if hits2:
-                    result = _query_by_id(hits2[0]["imdbID"])
-        except Exception:
-            pass
+    # NOTE: OMDb search mode (s=) was tried but removed – it returns false positives
+    # for German-titled films (e.g. "Das Drama" matches random English films).
+    # TMDb integration (see TMDB_API_KEY) is the correct long-term fix.
 
     omdb_cache[key] = result
     return result
+
+def get_tmdb(title: str, year: str | None = None) -> dict:
+    """
+    Query TMDb for movie metadata.  Returns the same keys as get_omdb() so the
+    two enrichment functions are interchangeable.  TMDb covers German-titled and
+    international films far better than OMDb.
+    Requires TMDB_API_KEY env variable (free account at themoviedb.org).
+    """
+    if not TMDB_KEY:
+        return {}
+    key = f"{title}|{year}"
+    if key in tmdb_cache:
+        return tmdb_cache[key]
+
+    def _search(query: str, y: str | None) -> dict:
+        params: dict = {
+            "api_key": TMDB_KEY,
+            "query":   query,
+            "language": "de",
+        }
+        if y:
+            params["year"] = y
+        try:
+            r = requests.get(
+                "https://api.themoviedb.org/3/search/movie",
+                params=params, timeout=8,
+            )
+            results = r.json().get("results", [])
+            if not results and y:
+                # Retry without year restriction
+                params2 = {k: v for k, v in params.items() if k != "year"}
+                r2 = requests.get(
+                    "https://api.themoviedb.org/3/search/movie",
+                    params=params2, timeout=8,
+                )
+                results = r2.json().get("results", [])
+            return results[0] if results else {}
+        except Exception:
+            return {}
+
+    hit = _search(title, year)
+    # Try simplified title if no hit (strip subtitle)
+    if not hit:
+        short = re.split(r'\s+[–—-]\s+|\s*:\s+', title, maxsplit=1)[0].strip()
+        if short != title:
+            hit = _search(short, year)
+
+    if not hit:
+        tmdb_cache[key] = {}
+        return {}
+
+    movie_id = hit.get("id")
+    poster_path = hit.get("poster_path") or ""
+    overview = hit.get("overview") or ""
+    release_year = (hit.get("release_date") or "")[:4]
+
+    # Fetch external IDs (incl. imdb_id) + credits from detail endpoint
+    imdb_id = ""
+    director = ""
+    actors = ""
+    try:
+        detail = requests.get(
+            f"https://api.themoviedb.org/3/movie/{movie_id}",
+            params={"api_key": TMDB_KEY, "append_to_response": "external_ids,credits", "language": "de"},
+            timeout=8,
+        ).json()
+        imdb_id = detail.get("external_ids", {}).get("imdb_id") or ""
+        credits = detail.get("credits", {})
+        director = ", ".join(
+            p["name"] for p in credits.get("crew", []) if p.get("job") == "Director"
+        )[:100]
+        actors = ", ".join(
+            p["name"] for p in credits.get("cast", [])[:4]
+        )
+        # Prefer German overview from detail if longer
+        if detail.get("overview") and len(detail["overview"]) > len(overview):
+            overview = detail["overview"]
+    except Exception:
+        pass
+
+    result = {
+        "imdb_rating": "",           # TMDb doesn't expose IMDb rating; OMDb used for this
+        "tmdb_rating": str(round(hit.get("vote_average", 0), 1)) if hit.get("vote_average") else "",
+        "tmdb_id":     str(movie_id) if movie_id else "",
+        "imdb_id":     imdb_id,
+        "poster_omdb": f"{TMDB_IMG}{poster_path}" if poster_path else "",
+        "plot":        overview,
+        "director":    director,
+        "actors":      actors,
+    }
+    tmdb_cache[key] = result
+    return result
+
+
+def get_enrichment(title: str, year: str | None = None) -> dict:
+    """
+    Merge TMDb (posters, plot, cast, imdb_id) with OMDb (imdb_rating).
+    TMDb is tried first for everything; OMDb fills in the rating gap.
+    """
+    tmdb = get_tmdb(title, year)
+    omdb = get_omdb(title, year)
+
+    # Prefer TMDb for everything except IMDb rating
+    return {
+        "imdb_rating": omdb.get("imdb_rating", ""),
+        "tmdb_rating": tmdb.get("tmdb_rating", ""),
+        "tmdb_id":     tmdb.get("tmdb_id", ""),
+        "imdb_id":     tmdb.get("imdb_id") or omdb.get("imdb_id", ""),
+        "poster_omdb": tmdb.get("poster_omdb") or omdb.get("poster_omdb", ""),
+        "plot":        tmdb.get("plot") or omdb.get("plot", ""),
+        "director":    tmdb.get("director") or omdb.get("director", ""),
+        "actors":      tmdb.get("actors") or omdb.get("actors", ""),
+    }
+
 
 # ── Date parsing ──────────────────────────────────────────────────────────────
 
@@ -373,7 +471,7 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         return None
 
     # ── OMDb enrichment ──
-    omdb = get_omdb(clean_title, year)
+    omdb = get_enrichment(clean_title, year)
 
     return {
         "title":       clean_title,
@@ -384,8 +482,10 @@ def parse_film_block(h2, next_h2, dates: list[str], city_name: str) -> dict | No
         "fsk":         fsk,
         "poster":      poster or omdb.get("poster_omdb", ""),
         "imdb_rating": omdb.get("imdb_rating", ""),
+        "tmdb_rating": omdb.get("tmdb_rating", ""),
+        "tmdb_id":     omdb.get("tmdb_id", ""),
         "imdb_id":     omdb.get("imdb_id", ""),
-        # Prefer OMDb full plot; fall back to allekinos.de excerpt
+        # Prefer enrichment plot; fall back to allekinos.de excerpt
         "plot":        omdb.get("plot", "") or ak_description,
         "director":    omdb.get("director", ""),
         "actors":      omdb.get("actors", ""),
@@ -482,7 +582,7 @@ def parse_kinopolis_page(html: str, cinema_name: str, city_name: str) -> list[di
         fsk_m     = re.search(r'FSK:\s*(?:ab\s*)?(\d+)', meta_text)
         fsk       = fsk_m.group(1) if fsk_m else None
 
-        omdb = get_omdb(title, year)
+        omdb = get_enrichment(title, year)
 
         movies.append({
             "title":       title,
@@ -493,6 +593,8 @@ def parse_kinopolis_page(html: str, cinema_name: str, city_name: str) -> list[di
             "fsk":         fsk,
             "poster":      poster or omdb.get("poster_omdb", ""),
             "imdb_rating": omdb.get("imdb_rating", ""),
+            "tmdb_rating": omdb.get("tmdb_rating", ""),
+            "tmdb_id":     omdb.get("tmdb_id", ""),
             "imdb_id":     omdb.get("imdb_id", ""),
             "plot":        omdb.get("plot", ""),
             "director":    omdb.get("director", ""),
@@ -619,7 +721,7 @@ def fetch_parse_murnau() -> list[dict]:
 
     movies = []
     for title, showtimes in title_showtimes.items():
-        omdb = get_omdb(title, None)
+        omdb = get_enrichment(title, None)
         movies.append({
             "title":       title,
             "version":     "OmU",
@@ -629,6 +731,8 @@ def fetch_parse_murnau() -> list[dict]:
             "fsk":         None,
             "poster":      omdb.get("poster_omdb", ""),
             "imdb_rating": omdb.get("imdb_rating", ""),
+            "tmdb_rating": omdb.get("tmdb_rating", ""),
+            "tmdb_id":     omdb.get("tmdb_id", ""),
             "imdb_id":     omdb.get("imdb_id", ""),
             "plot":        omdb.get("plot", ""),
             "director":    omdb.get("director", ""),
@@ -820,7 +924,7 @@ def parse_caligari(text: str) -> list[dict]:
             if not showtimes:
                 continue
 
-            omdb = get_omdb(title, year)
+            omdb = get_enrichment(title, year)
             movies.append({
                 "title":       title,
                 "version":     "OmU",
@@ -830,6 +934,8 @@ def parse_caligari(text: str) -> list[dict]:
                 "fsk":         None,
                 "poster":      omdb.get("poster_omdb", ""),
                 "imdb_rating": omdb.get("imdb_rating", ""),
+                "tmdb_rating": omdb.get("tmdb_rating", ""),
+                "tmdb_id":     omdb.get("tmdb_id", ""),
                 "imdb_id":     omdb.get("imdb_id", ""),
                 "plot":        omdb.get("plot", ""),
                 "director":    omdb.get("director", ""),
