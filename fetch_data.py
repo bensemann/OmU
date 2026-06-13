@@ -284,8 +284,8 @@ def get_tmdb(title: str, year: str | None = None) -> dict:
         actors = ", ".join(
             p["name"] for p in credits.get("cast", [])[:4]
         )
-        # Prefer German overview from detail if longer
-        if detail.get("overview") and len(detail["overview"]) > len(overview):
+        # Always prefer German overview from detail endpoint; keep English as fallback
+        if detail.get("overview"):
             overview = detail["overview"]
     except Exception:
         pass
