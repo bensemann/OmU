@@ -1204,31 +1204,59 @@ function renderAll() {
   const data = state.data;
   let html = '', count = 0;
 
+  // ── Collect & deduplicate films across all active cities ──────────────────
+  // Same film in e.g. Darmstadt AND Sulzbach → one card, both cinemas listed.
+  const movieMap = new Map(); // lowercase title → merged movie object
   for (const cityObj of state.allCities) {
     if (!state.activeCities.has(cityObj.name)) continue;
     const cityData = data.cities[cityObj.name];
     if (!cityData) continue;
     for (const movie of (cityData.movies || [])) {
-      // Favourites filter
-      if (state.onlyFavs && !state.favourites.has(movie.title)) continue;
-      // Genre filter
-      if (state.activeGenres.size > 0) {
-        const mg = new Set(movie.genres || []);
-        if (![...state.activeGenres].some(g => mg.has(g))) continue;
+      const key = movie.title.toLowerCase();
+      if (!movieMap.has(key)) {
+        movieMap.set(key, { ...movie, cinemas: (movie.cinemas || []).map(c => ({ ...c, showtimes: [...c.showtimes] })) });
+      } else {
+        const existing = movieMap.get(key);
+        // Merge cinemas / showtimes from this city into the existing entry
+        for (const cinema of (movie.cinemas || [])) {
+          const ec = existing.cinemas.find(c => c.name === cinema.name);
+          if (!ec) {
+            existing.cinemas.push({ ...cinema, showtimes: [...cinema.showtimes] });
+          } else {
+            const seen = new Set(ec.showtimes.map(s => s.date + '|' + s.time));
+            for (const st of cinema.showtimes) {
+              const k = st.date + '|' + st.time;
+              if (!seen.has(k)) { ec.showtimes.push(st); seen.add(k); }
+            }
+          }
+        }
+        // Inherit better metadata if the first city entry was missing it
+        if (!existing.poster && movie.poster) existing.poster = movie.poster;
+        if (!existing.plot   && movie.plot)   existing.plot   = movie.plot;
       }
-      // Rating filter
-      if (state.minRating > 0) {
-        const r = parseFloat(movie.tmdb_rating || '0');
-        if (!r || r < state.minRating) continue;
-      }
-      if (state.searchQuery.length >= 2) {
-        const q = state.searchQuery.toLowerCase();
-        if (!movie.title.toLowerCase().includes(q) &&
-            !(movie.cinemas||[]).some(c => c.name.toLowerCase().includes(q))) continue;
-      }
-      const card = buildMovieCard(movie);
-      if (card) { html += card; count++; }
     }
+  }
+
+  for (const movie of movieMap.values()) {
+    // Favourites filter
+    if (state.onlyFavs && !state.favourites.has(movie.title)) continue;
+    // Genre filter
+    if (state.activeGenres.size > 0) {
+      const mg = new Set(movie.genres || []);
+      if (![...state.activeGenres].some(g => mg.has(g))) continue;
+    }
+    // Rating filter
+    if (state.minRating > 0) {
+      const r = parseFloat(movie.tmdb_rating || '0');
+      if (!r || r < state.minRating) continue;
+    }
+    if (state.searchQuery.length >= 2) {
+      const q = state.searchQuery.toLowerCase();
+      if (!movie.title.toLowerCase().includes(q) &&
+          !(movie.cinemas||[]).some(c => c.name.toLowerCase().includes(q))) continue;
+    }
+    const card = buildMovieCard(movie);
+    if (card) { html += card; count++; }
   }
 
   if (!html) {
